@@ -33,7 +33,7 @@
 |---|---|
 | Seated or standing while playing | standing |
 | Distance from camera | ~1.5 m standing |
-| Visible in frame | head + torso + hands (knees not yet confirmed — needed for "running in place", see GESTURES.md) |
+| Visible in frame | head + torso + hands + knees (confirmed 2026-11-02) |
 | Lighting | daylight from window / overhead light at night |
 | Background | plain wall |
 

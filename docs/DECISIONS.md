@@ -8,6 +8,45 @@ Format: **Decision** — Why — Alternatives considered
 
 ---
 
+## 2026-11-02 — Roadmap step 2 implementation
+
+- **Knees are visible, so running in place (#2) is the forward gesture.** One
+  `AlternatingMotion` detector covers both #2 (knees) and #3 (wrists, `--forward arms`).
+- **Signal = left.y − right.y in the body frame.** It's a difference of two points, so
+  it ignores the whole body bobbing while running. 3-sample median filter against
+  single-frame glitches.
+- **Score = min(swing, recent range).** Swing: *both* sides rose above a 3 s median
+  baseline within the last 1 s (rejects a single knee lift or a weight shift, and
+  adapts to stance and camera angle). Recent range: peak-to-peak over the last
+  350 ms (makes the gesture end quickly when you stop). — Frequency analysis (FFT):
+  needs longer windows (more latency) and is harder to tune by eye. Velocity energy:
+  expected to be noisy, since differentiating amplifies landmark jitter (not measured).
+- **Accepted latency: ~0.3–0.5 s to start, ~0.5 s to stop** (synthetic). A rhythm
+  can't be recognised from one frame. Off-debounce 200 ms bridges the top of each stride.
+- **Detectors now receive a `FeatureWindow`** (time-bounded, 3 s, `None` for frames
+  without a person) instead of one frame. Static detectors use `window.latest`. The
+  same window will feed the step 4 classifiers. Detectors stay stateless, which keeps
+  replay deterministic.
+- **Safety releases and the pause hotkey moved from step 3 into step 2.** Holding W
+  without them is unsafe. Releases: gesture end, pause, focus loss (gate checked every
+  frame while holding), no person for 150 ms (independent of each gesture's
+  off-debounce), camera stall, exit/exception/Ctrl+C (`finally`), console window
+  closed (`SetConsoleCtrlHandler`). A hard kill can't be covered; documented.
+- **Re-arm rule:** after a safety release (focus loss, pause), the key is not pressed
+  again when focus or output returns. Only a new gesture START presses it. Keeps
+  "one input = one action": every key-down follows a deliberate gesture.
+- **Pause hotkey: `RegisterHotKey` on a dedicated message-loop thread, default
+  Ctrl+Alt+P.** The game never sees the combination. The callback releases keys right
+  away (thread-safe mapper with an `RLock`), so pause works even if the camera loop
+  stalls. `--send` refuses to run without it. — Low-level keyboard hook
+  (`SetWindowsHookEx`): heavier (a callback on every keystroke system-wide) for no gain.
+  Polling `GetAsyncKeyState`: misses short presses at 30 fps.
+- **Two hold mappings may not share a key** (one ending would release the other's).
+- **Landmark recording moved forward from step 4** (`sww record` / `sww replay`):
+  NumPy `.npz` (no new dependency), NaN rows for frames without a person, JSON
+  metadata. Replay uses the exact engine built for `run`. — Parquet: needs pyarrow;
+  can be added in step 4 if recordings grow.
+
 ## 2026-11-02 — Camera frame-rate fix
 
 - **Request MJPG both before and after setting the frame size.** — First live run

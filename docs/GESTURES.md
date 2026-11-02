@@ -20,9 +20,9 @@ sends. Rows marked **(suggested)** are ideas to confirm, edit or delete.
 ## Gesture → key mappings
 | # | Gesture (how I perform it) | Type | Body part | WoW action | Key | Mode | Priority | Seated OK? | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | Hand on top of head | Static | Either hand | Open all bags | B | Tap | 1 | Yes | Working (dry run) |
-| 2 | Running in place (knees alternating up/down) | Dynamic | Body | Move forward | W | Hold | 1 | No (see #3) | Planned — needs knees in frame |
-| 3 | (suggested) Pumping arms as if running | Dynamic | Both hands | Move forward (seated alternative to #2) | W | Hold | 2 | Yes | Idea |
+| 1 | Hand on top of head | Static | Either hand | Open all bags | B | Tap | 1 | Yes | Working (Notepad + WoW) |
+| 2 | Running in place (knees alternating up/down) | Dynamic | Body | Move forward | W | Hold | 1 | No (see #3) | Built — live tuning pending |
+| 3 | Pumping arms as if running | Dynamic | Both hands | Move forward (seated alternative to #2) | W | Hold | 2 | Yes | Built (`--forward arms`), untested live |
 | 4 | (suggested) Lean torso left | Static | Body | Strafe left | Q | Hold | 2 | Yes | Idea |
 | 5 | (suggested) Lean torso right | Static | Body | Strafe right | E | Hold | 2 | Yes | Idea |
 | 6 | (suggested) Both arms raised overhead | Static | Both hands | Jump | Space | Tap | 2 | Yes | Idea |
@@ -37,13 +37,14 @@ sends. Rows marked **(suggested)** are ideas to confirm, edit or delete.
 ## App-control gestures (do not send game keys)
 | Gesture | App action | Notes |
 |---|---|---|
+| (keyboard) Ctrl+Alt+P, global | Pause / resume input; releases held keys | Built. Change with `--pause-hotkey` |
 | [e.g. both hands crossed in an X] | Pause / resume input | Keyboard hotkey remains the main kill switch |
 
 ## Camera framing
-- "Running in place" (#2) is detected from the knees. With the webcam on top
-  of the monitor at ~1.5 m, the frame may stop at the hips. Before step 2,
-  check the preview: if knees aren't visible, tilt the camera down, step back,
-  or make "pumping arms" (#3) the primary forward gesture.
+- "Running in place" (#2) is detected from the knees. Confirmed 2026-11-02: the
+  knees are visible at the standing play position. If they drop out of frame
+  (score shows `visible = 0` in `--debug`), tilt the camera down, step back, or use
+  `--forward arms`.
 
 ## Conflicts to watch
 - Gestures that look alike to the camera (e.g. #1 vs #6 mid-motion) need
