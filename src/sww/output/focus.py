@@ -8,19 +8,29 @@ pixels, so it stays within the fair-play rules.
 from __future__ import annotations
 
 import ctypes
+import functools
 import sys
 from collections.abc import Callable
 from ctypes import wintypes
 
 
-def foreground_window_title() -> str:
-    """Return the title of the current foreground window (Windows only)."""
-    if sys.platform != "win32":
-        raise OSError("foreground_window_title only works on Windows")
+@functools.cache
+def _user32() -> ctypes.WinDLL:
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     user32.GetForegroundWindow.restype = wintypes.HWND
     user32.GetWindowTextLengthW.argtypes = (wintypes.HWND,)
     user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    return user32
+
+
+def foreground_window_title() -> str:
+    """Return the title of the current foreground window (Windows only).
+
+    Cheap (two system calls), so it's fine to call every frame while a key is held.
+    """
+    if sys.platform != "win32":
+        raise OSError("foreground_window_title only works on Windows")
+    user32 = _user32()
     hwnd = user32.GetForegroundWindow()
     if not hwnd:
         return ""

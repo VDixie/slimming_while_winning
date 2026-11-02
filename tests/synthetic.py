@@ -113,6 +113,8 @@ def make_frame(
     hidden: tuple[Pose, ...] = (),
     jitter_px: float = 0.0,
     rng: np.random.Generator | None = None,
+    wrist_lift: tuple[float, float] = (0.0, 0.0),
+    rise: float = 0.0,
 ) -> PoseFrame:
     """Build a PoseFrame.
 
@@ -122,12 +124,20 @@ def make_frame(
             standing further from / closer to the camera).
         hidden: Landmarks to mark as not visible.
         jitter_px: Std-dev of Gaussian noise added to every point, in pixels.
+        wrist_lift: (left, right) raise of a hanging hand in shoulder widths
+            (negative lowers it).
+        rise: Move the whole body up by this many shoulder widths (negative =
+            down), e.g. the bounce of running or crouching.
     """
     px, vis = _neutral_pixels()
     if left:
         _POSES[left](px, "LEFT")
     if right:
         _POSES[right](px, "RIGHT")
+    for side, lift in (("LEFT", wrist_lift[0]), ("RIGHT", wrist_lift[1])):
+        for joint in ("WRIST", "INDEX", "PINKY", "THUMB"):
+            px[Pose[f"{side}_{joint}"], 1] -= lift * SW
+    px[:, 1] -= rise * SW
     centre = np.array([IMAGE_SIZE[0] / 2, IMAGE_SIZE[1] / 2], dtype=np.float32)
     px = (px - centre) * scale + centre
     if jitter_px:
@@ -140,3 +150,70 @@ def make_frame(
     lms[:, 1] = px[:, 1] / IMAGE_SIZE[1]
     lms[:, 3] = vis
     return PoseFrame(timestamp_ms=timestamp_ms, landmarks=lms, image_size=IMAGE_SIZE)
+
+
+FRAME_MS = 33  # ~30 fps
+
+
+def motion_stream(
+    segments: list[tuple[str | None, int]],
+    freq_hz: float = 1.33,
+    arm: float = 0.2,
+    bounce: float = 0.08,
+    jitter_px: float = 0.0,
+    seed: int = 0,
+    frame_ms: int = FRAME_MS,
+    t0: int = 0,
+    **frame_kwargs,
+):
+    """Yield ``(frame, t)`` for a sequence of ``(activity, duration_ms)`` segments.
+
+    Activities:
+
+    - ``"stand"``: still.
+    - ``"run"``: running in place. The wrists swing in opposite directions by
+      ``arm`` shoulder widths (so left - right swings by 2 * ``arm``) at
+      ``freq_hz``, and the whole body bounces by ``bounce`` shoulder widths
+      twice per arm cycle (once per step). Defaults match the real recordings.
+    - ``"run_up"``: like ``"run"``, but the bounce only goes *up* from standing
+      height (0 .. 2 * ``bounce``), as measured on real recordings: the lowest
+      point of each step is about where you stand still.
+    - ``"arms"``: the arm swing without the bounce (gesturing, seated pumping).
+    - ``"bounce"``: the bounce without the arm swing (bobbing, shifting weight).
+    - ``"raise_left"``: left hand raised by 3 * ``arm`` and held.
+    - ``"crouch"``: whole body lowered by 3 * ``bounce`` and held.
+    - ``"dip"``: whole body lowered by ``bounce`` (the knee bend before the first
+      jump of a run; use for ~200 ms).
+    - None: no person.
+    """
+    rng = np.random.default_rng(seed)
+    t = t0
+    phase_t = 0  # advances only while moving, so each segment continues the rhythm
+    for activity, duration in segments:
+        end = t + duration
+        while t < end:
+            if activity is None:
+                yield None, t
+                t += frame_ms
+                continue
+            wrists, rise = (0.0, 0.0), 0.0
+            if activity in ("run", "run_up", "arms", "bounce"):
+                angle = 2 * np.pi * freq_hz * phase_t / 1000
+                if activity != "bounce":
+                    wrists = (arm * np.sin(angle), -arm * np.sin(angle))
+                if activity != "arms":
+                    rise = bounce * np.cos(2 * angle)
+                    if activity == "run_up":
+                        rise += bounce
+                phase_t += frame_ms
+            elif activity == "raise_left":
+                wrists = (3 * arm, 0.0)
+            elif activity == "crouch":
+                rise = -3 * bounce
+            elif activity == "dip":
+                rise = -bounce
+            frame = make_frame(
+                t, jitter_px=jitter_px, rng=rng, wrist_lift=wrists, rise=rise, **frame_kwargs
+            )
+            yield frame, t
+            t += frame_ms

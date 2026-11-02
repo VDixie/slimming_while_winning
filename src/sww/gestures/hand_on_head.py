@@ -33,6 +33,7 @@ import numpy as np
 from sww.features import DEFAULT_MIN_VISIBILITY, BodyFeatures, joint_angle_deg
 from sww.gestures.base import Evaluation, falling, rising
 from sww.landmarks import Pose
+from sww.window import FeatureWindow
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,8 +117,9 @@ class HandOnHead:
         details[f"{side}.score"] = score
         return score
 
-    def evaluate(self, features: BodyFeatures | None) -> Evaluation:
-        """Score 0..1; None when no person is tracked."""
+    def evaluate(self, window: FeatureWindow) -> Evaluation:
+        """Score 0..1 for the newest frame; None when no person is tracked."""
+        features = window.latest
         if features is None:
             return Evaluation(score=None)
         head = self._head_point(features)

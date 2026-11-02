@@ -1,12 +1,16 @@
 """The one interface every gesture detector implements.
 
 A detector turns body features into a *score* between 0 and 1: how strongly the
-gesture is present in this frame. Rule-based detectors compute it from geometry;
-trained classifiers (roadmap step 4) will return a class probability. Either
-way, the state machine (:mod:`sww.state`) decides when a gesture starts and
-ends, using separate enter/exit thresholds (hysteresis) and minimum durations
-(debounce). Keeping that logic out of detectors means every detector gets the
-same anti-flicker behaviour.
+gesture is present in this frame. It receives a :class:`~sww.window.FeatureWindow`
+of recent frames: static detectors only look at ``window.latest``, dynamic
+ones (running in place) look back over the last second or so.
+
+Rule-based detectors compute the score from geometry; trained classifiers
+(roadmap step 4) will return a class probability. Either way, the state
+machine (:mod:`sww.state`) decides when a gesture starts and ends, using
+separate enter/exit thresholds (hysteresis) and minimum durations (debounce).
+Keeping that logic out of detectors means every detector gets the same
+anti-flicker behaviour.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from sww.features import BodyFeatures
+from sww.window import FeatureWindow
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,8 +41,12 @@ class GestureDetector(Protocol):
 
     name: str
 
-    def evaluate(self, features: BodyFeatures | None) -> Evaluation:
-        """Score the gesture for one frame. ``features`` is None when tracking is lost."""
+    def evaluate(self, window: FeatureWindow) -> Evaluation:
+        """Score the gesture for the newest frame in ``window``.
+
+        ``window.latest`` is None when no person is tracked in that frame;
+        return ``Evaluation(score=None)`` if the gesture can't be judged.
+        """
         ...
 
 

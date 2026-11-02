@@ -8,6 +8,142 @@ Format: **Decision** — Why — Alternatives considered
 
 ---
 
+## 2026-11-02 — Labelled recordings; body bounce only has to go up
+
+- **Labels files** (`<recording>.labels.json`, `{"running": [[start, end], ...]}`,
+  seconds from the first frame, `null` = until the end). Two new recordings mix
+  standing and running, which the old "running the whole time" rule couldn't check.
+  The real-recording tests now require one activation per labelled interval
+  (start ≤ 1.2 s, stop ≤ 1.0 s late, ≤ 0.4 s early for label imprecision) and none
+  outside. Kept as a sidecar file, not inside the `.npz`, so it can be edited by
+  hand without touching the raw data. The per-frame `label.<activity>` CSV column
+  is the training target for step 4.
+- **Bounce scores only the upward side** (`OscillationParams.sides="up"`). Found on
+  `running_20261102-175705`: W released 0.5 s into a run and pressed again. Cause:
+  the shoulders' *lowest* point while running is about their standing height; each
+  step pushes up from there. With the 3 s baseline still mostly standing, the
+  "below baseline" side was tiny, so the both-sides rule failed until the baseline
+  caught up. A small knee dip before the first jump had briefly satisfied it, hence
+  the flicker. Compared on labelled data and a synthetic worst case (upward-only
+  bounce, with and without a dip, 90 runs):
+
+  | Bounce rule | Real recordings | Synthetic flickers | Running swing min | Not-running swing max |
+  |---|---|---|---|---|
+  | both sides, 3 s baseline (old) | 1 flicker | 60/90 | 0.020 | 0.014 |
+  | both sides, 2 s baseline | OK | 32/90 | 0.024 | 0.011 |
+  | **up only, 3 s baseline** | OK | 0/90 | 0.076 | 0.022 |
+
+  Thresholds: swing 0.02–0.045 (half your bounce still scores ~1). Crouching and
+  staying scores 0, as before. The arms keep "both sides".
+- Measured on real data (labelled): start delay 0.8–1.0 s, stop delay 0.17–0.23 s.
+  The start is slower than the synthetic 0.5 s in both `run` and `arms` modes, so
+  it is limited by the arm signal (wrists hidden at rest, so coverage must build up),
+  not the bounce. Not changed yet.
+
+## 2026-11-02 — `sww record` writes the replay CSV automatically
+
+- **After saving, `record` replays the recording and writes `<name>.csv` next to the
+  `.npz`** (opt out with `--no-csv`); `record` takes the same gesture options as `run`.
+  Removes a manual step. The CSV reflects the detectors *at recording time*; after
+  changing detectors, `sww replay <file> --csv` (no path = next to the recording)
+  refreshes it. — Writing only the CSV and no `.npz`: the `.npz` is the raw data
+  needed to re-score with future detectors and for step 4 training.
+
+## 2026-11-02 — Running = arm swing AND body bounce; knees removed
+
+- **Knees removed as an input** (out of frame at the play position; see below).
+  `--forward knees` is gone; `--forward run` is the default, `--forward arms` stays
+  for seated play.
+- **Running in place = min(arm swing score, body bounce score).** Neither alone is
+  enough: arms without bounce = gesturing or seated pumping; bounce without arms =
+  bobbing, shifting weight, laughing. Same rule for both signals (moves both ways
+  around a 3 s median baseline within 1 s, and still moving in the last 450 ms), so
+  the old `AlternatingMotion` became a generic `oscillation()` over any per-frame
+  signal (`gestures/oscillation.py`), and running lives in `gestures/running.py`.
+  — Checking that bounce runs at twice the arm frequency: an even stronger running
+  signature, but needs frequency estimation on 1 s of 15 fps data; kept for later if
+  false triggers appear.
+- **Bounce signal = shoulder midpoint height**, compared with hips and nose on the
+  recordings: shoulders separate best (running swing p1 0.048 vs idle max 0.007,
+  range p1 0.094 vs 0.019). Hips sit at the image edge and are noisier; the nose
+  also moves when nodding.
+- **No median filter for bounce.** At ~2.6 Hz and 15 fps a bounce cycle is ~6 samples
+  and the filter clips the peaks (swing p1 0.048 → 0.039).
+- **Bounce is measured in pixels and scaled by the median shoulder width over the
+  window**, not frame by frame. Found by the "arms only must not trigger" test:
+  dividing each frame by its own shoulder width turns ~1% width jitter into fake
+  bounce, multiplied by the shoulders' distance from the image top in shoulder
+  widths (~0.5 in the recordings, but 2.25 in the synthetic frames, and larger if
+  you stand further back). Real-data margins unchanged after the fix.
+- **Bounce thresholds:** swing 0.015–0.035, range 0.035–0.07 shoulder widths. On the
+  running recording the bounce term stays ≥ 0.99 throughout; idle stays at 0.
+
+## 2026-11-02 — Tuning on the first real recordings
+
+Data: `recordings/running_20261102-141337` and `idle_20261102-141424` (15 s each, 15 fps).
+- **The knees are not in the camera image** (normalised y ≈ 1.3; the hips are at the bottom
+  edge, y ≈ 0.85). This supersedes "knees are visible" below. MediaPipe guessed their
+  positions, with visibility 0.6–0.7 when standing. Guessed knees carry no running signal
+  (1 s peak-to-peak 0.09 running vs 0.10 idle).
+- **Landmarks outside the image now count as not visible** (`features.OFF_IMAGE_MARGIN`),
+  whatever MediaPipe's visibility says. — Raising the visibility cutoff: would also
+  reject real but partly occluded points, and 0.7 guesses would still pass.
+- **Natural arm swing is a strong running signal:** wrist difference peak-to-peak 0.85
+  running vs 0.06 idle, alternating at 1.33 Hz (stride rate). Body bounce is also clear
+  (0.23 vs 0.01 at 2.6 Hz, one bounce per step); kept in reserve, not implemented.
+- **`PUMPING_ARMS` retuned from a parameter sweep:** swing 0.08–0.18, range 0.15–0.35,
+  picked from the middle of the region that gives exactly one key-down on the running
+  recording and a zero score on idle. Before: swing 0.20–0.40 / range 0.30–0.60 gave
+  6 starts (flicker).
+- **`recent_ms` 350 → 450 ms (both presets).** At a real 1.33 Hz cadence a 350 ms window
+  can sit inside one half-swing, so the range term dropped at every turning point.
+  450 ms covers down to ~1.1 Hz. Cost: ~50–100 ms more stop latency (now ~0.55–0.75 s).
+- **Recordings ran at 15 fps** (very regular 64 ms frames, so the camera was delivering
+  15 fps, not processing falling behind), versus 30 fps in earlier live runs. Likely the
+  camera's auto-exposure in lower light; to be checked with `sww bench`. The detector is
+  now tested at 15 fps.
+- **`tests/test_real_recordings.py`** replays any local recordings labelled `running` /
+  `idle`; skipped when there are none, so private data stays out of git.
+
+## 2026-11-02 — Roadmap step 2 implementation
+
+- **Knees are visible, so running in place (#2) is the forward gesture.** One
+  `AlternatingMotion` detector covers both #2 (knees) and #3 (wrists, `--forward arms`).
+- **Signal = left.y − right.y in the body frame.** It's a difference of two points, so
+  it ignores the whole body bobbing while running. 3-sample median filter against
+  single-frame glitches.
+- **Score = min(swing, recent range).** Swing: *both* sides rose above a 3 s median
+  baseline within the last 1 s (rejects a single knee lift or a weight shift, and
+  adapts to stance and camera angle). Recent range: peak-to-peak over the last
+  350 ms (makes the gesture end quickly when you stop). — Frequency analysis (FFT):
+  needs longer windows (more latency) and is harder to tune by eye. Velocity energy:
+  expected to be noisy, since differentiating amplifies landmark jitter (not measured).
+- **Accepted latency: ~0.3–0.5 s to start, ~0.5 s to stop** (synthetic). A rhythm
+  can't be recognised from one frame. Off-debounce 200 ms bridges the top of each stride.
+- **Detectors now receive a `FeatureWindow`** (time-bounded, 3 s, `None` for frames
+  without a person) instead of one frame. Static detectors use `window.latest`. The
+  same window will feed the step 4 classifiers. Detectors stay stateless, which keeps
+  replay deterministic.
+- **Safety releases and the pause hotkey moved from step 3 into step 2.** Holding W
+  without them is unsafe. Releases: gesture end, pause, focus loss (gate checked every
+  frame while holding), no person for 150 ms (independent of each gesture's
+  off-debounce), camera stall, exit/exception/Ctrl+C (`finally`), console window
+  closed (`SetConsoleCtrlHandler`). A hard kill can't be covered; documented.
+- **Re-arm rule:** after a safety release (focus loss, pause), the key is not pressed
+  again when focus or output returns. Only a new gesture START presses it. Keeps
+  "one input = one action": every key-down follows a deliberate gesture.
+- **Pause hotkey: `RegisterHotKey` on a dedicated message-loop thread, default
+  Ctrl+Alt+P.** The game never sees the combination. The callback releases keys right
+  away (thread-safe mapper with an `RLock`), so pause works even if the camera loop
+  stalls. `--send` refuses to run without it. — Low-level keyboard hook
+  (`SetWindowsHookEx`): heavier (a callback on every keystroke system-wide) for no gain.
+  Polling `GetAsyncKeyState`: misses short presses at 30 fps.
+- **Two hold mappings may not share a key** (one ending would release the other's).
+- **Landmark recording moved forward from step 4** (`sww record` / `sww replay`):
+  NumPy `.npz` (no new dependency), NaN rows for frames without a person, JSON
+  metadata. Replay uses the exact engine built for `run`. — Parquet: needs pyarrow;
+  can be added in step 4 if recordings grow.
+
 ## 2026-11-02 — Camera frame-rate fix
 
 - **Request MJPG both before and after setting the frame size.** — First live run

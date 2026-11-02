@@ -6,10 +6,12 @@ from sww.features import to_body_frame
 from sww.gestures import HandOnHead
 from sww.gestures.base import falling, rising
 from sww.landmarks import Pose
+from sww.window import FeatureWindow
 
 
 def score(**kwargs) -> float | None:
-    return HandOnHead().evaluate(to_body_frame(make_frame(**kwargs))).score
+    frame = to_body_frame(make_frame(**kwargs))
+    return HandOnHead().evaluate(FeatureWindow.of(frame)).score
 
 
 def test_ramps():
@@ -59,7 +61,7 @@ def test_no_head_scores_zero():
 
 
 def test_no_person_gives_none():
-    assert HandOnHead().evaluate(None).score is None
+    assert HandOnHead().evaluate(FeatureWindow.of(None)).score is None
 
 
 def test_robust_to_landmark_jitter():
@@ -71,5 +73,5 @@ def test_robust_to_landmark_jitter():
 
 
 def test_details_expose_tuning_values():
-    ev = HandOnHead().evaluate(to_body_frame(make_frame(right="on_head")))
+    ev = HandOnHead().evaluate(FeatureWindow.of(to_body_frame(make_frame(right="on_head"))))
     assert {"right.dy", "right.dx", "right.elbow_deg", "right.score"} <= ev.details.keys()

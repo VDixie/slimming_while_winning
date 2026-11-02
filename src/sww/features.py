@@ -30,6 +30,11 @@ from sww.landmarks import Pose, PoseFrame
 # Minimum MediaPipe visibility for a landmark to be trusted.
 DEFAULT_MIN_VISIBILITY = 0.5
 
+# Landmarks further than this outside the image (normalised units) count as not
+# visible. MediaPipe still *guesses* positions of body parts outside the frame and
+# can give those guesses a visibility of 0.6-0.7 (seen with knees below the image).
+OFF_IMAGE_MARGIN = 0.02
+
 # Below this apparent shoulder width (pixels) the person is too far away or the
 # shoulders are mis-detected; scale-normalising would amplify noise.
 MIN_SHOULDER_WIDTH_PX = 20.0
@@ -42,14 +47,20 @@ class BodyFeatures:
     Attributes:
         timestamp_ms: Copied from the source :class:`PoseFrame`.
         points: ``(33, 2)`` float32 array, body-frame x/y in shoulder widths.
-        visibility: ``(33,)`` float32 array, MediaPipe visibility 0..1.
-        shoulder_width_px: The scale used, in pixels (useful for debugging).
+        visibility: ``(33,)`` float32 array, MediaPipe visibility 0..1, set to 0
+            for landmarks outside the image (see ``OFF_IMAGE_MARGIN``).
+        shoulder_width_px: The scale used, in pixels.
+        origin_px: ``(2,)`` image position of the body-frame origin (shoulder
+            midpoint) in pixels, origin top-left, y down. The body frame
+            removes where the body *is*; this keeps it, for whole-body motion
+            such as the up-and-down bounce of running.
     """
 
     timestamp_ms: int
     points: np.ndarray
     visibility: np.ndarray
     shoulder_width_px: float
+    origin_px: np.ndarray
 
     def visible(self, idx: Pose, min_visibility: float = DEFAULT_MIN_VISIBILITY) -> bool:
         """Return True if landmark ``idx`` is visible enough to use."""
@@ -68,7 +79,9 @@ def to_body_frame(
     Returns None if both shoulders aren't visible or are implausibly close
     together, because the body frame can't be defined without them.
     """
-    vis = frame.visibility
+    xy = frame.landmarks[:, :2]
+    inside = np.all((xy >= -OFF_IMAGE_MARGIN) & (xy <= 1.0 + OFF_IMAGE_MARGIN), axis=1)
+    vis = np.where(inside, frame.visibility, 0.0)
     if vis[Pose.LEFT_SHOULDER] < min_visibility or vis[Pose.RIGHT_SHOULDER] < min_visibility:
         return None
 
@@ -88,6 +101,7 @@ def to_body_frame(
         points=body.astype(np.float32),
         visibility=vis.astype(np.float32),
         shoulder_width_px=shoulder_width,
+        origin_px=origin.astype(np.float32),
     )
 
 
