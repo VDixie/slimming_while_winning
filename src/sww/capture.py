@@ -20,6 +20,15 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+CAPTURE_APIS: dict[str, int] = {"dshow": cv2.CAP_DSHOW, "msmf": cv2.CAP_MSMF}
+
+
+def fourcc_to_str(code: float) -> str:
+    """Decode OpenCV's numeric FOURCC (e.g. 1196444237.0) into text like "MJPG"."""
+    n = int(code)
+    chars = [chr((n >> (8 * i)) & 0xFF) for i in range(4)]
+    return "".join(chars) if all(c.isprintable() for c in chars) and n else "?"
+
 
 def now_ms() -> int:
     """Monotonic clock in integer milliseconds (never goes backwards)."""
@@ -42,11 +51,29 @@ class LatestFrameCamera:
         index: Camera index (0 = first webcam).
         width, height, fps: Requested mode. The driver may pick the nearest
             supported one; check :attr:`actual_size` / :attr:`actual_fps`.
+        api: Windows capture backend, "dshow" (DirectShow) or "msmf" (Media
+            Foundation). They negotiate camera modes differently, so one may
+            reach 30 fps where the other doesn't.
+        mjpg: Ask for MJPG (compressed) frames. Over USB 2.0, uncompressed
+            YUY2 at 1280x720 is often limited to 5-10 fps; MJPG allows 30.
     """
 
-    def __init__(self, index: int = 0, width: int = 1280, height: int = 720, fps: int = 30):
+    def __init__(
+        self,
+        index: int = 0,
+        width: int = 1280,
+        height: int = 720,
+        fps: int = 30,
+        api: str = "dshow",
+        mjpg: bool = True,
+    ):
+        if api not in CAPTURE_APIS:
+            raise ValueError(f"api must be one of {sorted(CAPTURE_APIS)}")
         self.index = index
         self.requested = (width, height, fps)
+        self.api = api
+        self.mjpg = mjpg
+        self.actual_fourcc: str = ""
         self._cap: cv2.VideoCapture | None = None
         self._thread: threading.Thread | None = None
         self._cond = threading.Condition()
@@ -58,18 +85,23 @@ class LatestFrameCamera:
 
     def start(self) -> None:
         """Open the camera and start the reader thread."""
-        # DirectShow opens quickly on Windows and honours MJPG; MJPG lets USB
-        # webcams deliver 720p/1080p at 30 fps (raw YUY2 is often capped lower).
-        api = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+        api = CAPTURE_APIS[self.api] if sys.platform == "win32" else cv2.CAP_ANY
         cap = cv2.VideoCapture(self.index, api)
         if not cap.isOpened():
-            raise RuntimeError(f"could not open camera {self.index}")
+            raise RuntimeError(f"could not open camera {self.index} with {self.api}")
         width, height, fps = self.requested
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        mjpg = cv2.VideoWriter_fourcc(*"MJPG")
+        # Some drivers only honour FOURCC if it's set before the size, others
+        # only after; setting it both times is the usual workaround.
+        if self.mjpg:
+            cap.set(cv2.CAP_PROP_FOURCC, mjpg)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         cap.set(cv2.CAP_PROP_FPS, fps)
+        if self.mjpg:
+            cap.set(cv2.CAP_PROP_FOURCC, mjpg)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # ask the driver not to queue old frames
+        self.actual_fourcc = fourcc_to_str(cap.get(cv2.CAP_PROP_FOURCC))
         self.actual_size = (
             int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
             int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),

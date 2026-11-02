@@ -105,10 +105,15 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     with (
         PoseTracker(model) as tracker,
-        LatestFrameCamera(args.camera, args.width, args.height, args.fps) as camera,
+        LatestFrameCamera(
+            args.camera, args.width, args.height, args.fps, api=args.api, mjpg=not args.no_mjpg
+        ) as camera,
     ):
         w, h = camera.actual_size
-        print(f"Camera {args.camera}: {w}x{h} @ {camera.actual_fps:.0f} fps (driver-reported)")
+        print(
+            f"Camera {args.camera} via {args.api}: {w}x{h} {camera.actual_fourcc} "
+            f"@ {camera.actual_fps:.0f} fps (driver-reported)"
+        )
         seq = 0
         try:
             while True:
@@ -165,6 +170,41 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench(args: argparse.Namespace) -> int:
+    import numpy as np
+
+    from sww.bench import bench_cameras, bench_model
+    from sww.models import pose_model_path
+
+    sample = None
+    if not args.skip_camera:
+        print("Camera: stand in view with your normal lighting. Each line takes a few seconds.")
+        apis = ["dshow", "msmf"] if sys.platform == "win32" else ["dshow"]
+        results, sample = bench_cameras(args.camera, apis, [(1280, 720), (640, 480)], args.seconds)
+        ok = [r for r in results if not r.error]
+        if ok:
+            best = max(ok, key=lambda r: r.fps)
+            print(
+                f"Fastest: --api {best.api}{'' if best.mjpg else ' --no-mjpg'} "
+                f"--width {best.requested[0]} --height {best.requested[1]}  ({best.fps:.1f} fps)"
+            )
+    if sample is None:
+        if not args.skip_camera:
+            print("No camera frame captured; timing the model on a synthetic image instead.")
+        sample = np.full((720, 1280, 3), 127, np.uint8)
+
+    print("\nPose model (on one frame, 100 runs):")
+    found_any = False
+    for variant in ("lite", "full", "heavy"):
+        path = pose_model_path(variant, Path(args.models_dir))
+        if not path.is_file():
+            print(f"  {variant:5}  not downloaded (uv run sww download-models --variant {variant})")
+            continue
+        found_any = True
+        print(bench_model(path, variant, sample), flush=True)
+    return 0 if found_any else 1
+
+
 # --------------------------------------------------------------------------- parser
 
 
@@ -195,6 +235,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--width", type=int, default=1280)
     p.add_argument("--height", type=int, default=720)
     p.add_argument("--fps", type=int, default=30)
+    p.add_argument("--api", default="dshow", choices=["dshow", "msmf"], help="capture backend")
+    p.add_argument("--no-mjpg", action="store_true", help="don't request MJPG frames")
     p.add_argument("--model", default="lite", choices=["lite", "full", "heavy"])
     p.add_argument("--models-dir", default="models")
     p.add_argument("--no-preview", action="store_true", help="headless: no window")
@@ -202,6 +244,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--debug", action="store_true", help="show rule values for tuning")
     p.add_argument("--stats-every", type=float, default=5.0, help="seconds between perf lines")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("bench", help="measure camera fps and model speed separately")
+    p.add_argument("--camera", type=int, default=0)
+    p.add_argument("--seconds", type=float, default=3.0, help="per camera configuration")
+    p.add_argument("--models-dir", default="models")
+    p.add_argument("--skip-camera", action="store_true", help="only time the model(s)")
+    p.set_defaults(func=cmd_bench)
     return parser
 
 

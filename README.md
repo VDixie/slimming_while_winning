@@ -56,6 +56,17 @@ uv run pytest                             # webcam-free tests
 | `--tap-ms N` | How long the key is held for a tap (raise if the game misses taps) |
 | `--no-preview` | Headless, terminal only |
 | `--camera N`, `--width`, `--height`, `--fps` | Camera selection and mode |
+| `--api dshow/msmf` | Windows capture backend (try the other one if fps is low) |
+| `--no-mjpg` | Don't request compressed MJPG frames |
+
+## Low frame rate?
+
+```powershell
+uv run sww bench
+```
+Times the camera (each backend x MJPG on/off x 720p/480p) and the pose model
+separately, then prints the fastest camera settings. The run loop can't beat
+the slower of the two.
 
 ## Layout
 
@@ -71,6 +82,7 @@ src/sww/
   engine.py       features → detectors → state → actions, per frame (replayable)
   output/         SendInput backend (scan codes), key names, focus gate
   preview.py      OpenCV overlay
+  bench.py        camera vs model timing (`sww bench`)
   cli.py          `sww` command
 tests/            webcam-free tests on synthetic landmark streams
 ```

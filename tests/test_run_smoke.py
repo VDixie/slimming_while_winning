@@ -18,6 +18,7 @@ class FakeCamera:
         self.n = n_frames
         self.actual_size = (1280, 720)
         self.actual_fps = 30.0
+        self.actual_fourcc = "MJPG"
 
     def __enter__(self):
         return self
@@ -66,3 +67,16 @@ def test_render_draws_without_display():
     assert out.shape == image.shape
     assert out.any()  # something was drawn
     assert not image.any()  # input untouched
+
+
+def test_fourcc_decoding():
+    from sww.capture import fourcc_to_str
+
+    assert fourcc_to_str(1196444237.0) == "MJPG"
+    assert fourcc_to_str(844715353.0) == "YUY2"
+    assert fourcc_to_str(0.0) == "?"
+
+
+def test_bench_model_only_reports_missing_models(tmp_path, capsys):
+    assert main(["bench", "--skip-camera", "--models-dir", str(tmp_path)]) == 1
+    assert "not downloaded" in capsys.readouterr().out
