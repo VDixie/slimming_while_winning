@@ -17,6 +17,9 @@ The score is the minimum (fuzzy AND) of two terms:
    is its centre, and when standing still it is just the resting value, so the
    baseline adapts to stance, posture and camera position. Requiring both sides
    rejects one-off movements: raising one hand, or crouching down and staying.
+   Some rhythms are one-sided, though: the body bounce while running pushes
+   *up* from standing height and comes back to it. For those, ``sides="up"``
+   scores only ``max(s - b)`` (crouching and staying still scores 0).
 2. **recent motion** (look-back ``recent_ms``, ~450 ms): peak-to-peak range of
    the signal must still be large. This is what makes the gesture end quickly
    when you stop: the swing term remembers the last second, this one doesn't.
@@ -44,6 +47,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 
@@ -73,6 +77,9 @@ class OscillationParams:
             Dividing frame by frame instead would turn shoulder-width jitter
             into fake motion, amplified by the signal's size (e.g. how far
             the shoulders are from the top of the image).
+        sides: Which way(s) the signal must move from its baseline for the
+            swing term: ``"both"`` (smaller of the two) or ``"up"`` (above only,
+            for rhythms that push up from a resting value).
     """
 
     swing_lo: float
@@ -85,10 +92,13 @@ class OscillationParams:
     min_coverage: float = 0.6
     smooth: bool = True
     pixel_signal: bool = False
+    sides: Literal["both", "up"] = "both"
 
     def __post_init__(self) -> None:
         if not self.recent_ms <= self.swing_ms <= self.baseline_ms:
             raise ValueError("need recent_ms <= swing_ms <= baseline_ms")
+        if self.sides not in ("both", "up"):
+            raise ValueError(f"sides must be 'both' or 'up', not {self.sides!r}")
 
 
 def median3(x: np.ndarray) -> np.ndarray:
@@ -147,8 +157,10 @@ def oscillation(window: FeatureWindow, signal: Signal, params: OscillationParams
     swing_seg = s[t >= now - p.swing_ms] - baseline
     recent_seg = s[t >= now - p.recent_ms]
 
-    # How far the signal went each way from the baseline; the smaller one counts.
-    swing = min(float(swing_seg.max()), float(-swing_seg.min()))
+    # How far the signal went each way from the baseline; with sides="both" the
+    # smaller one counts.
+    up, down = float(swing_seg.max()), float(-swing_seg.min())
+    swing = min(up, down) if p.sides == "both" else up
     recent_range = float(np.ptp(recent_seg)) if len(recent_seg) else 0.0
 
     score = min(

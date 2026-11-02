@@ -10,6 +10,7 @@ from sww.features import to_body_frame
 from sww.gestures import (
     ARM_SWING,
     BOUNCE,
+    OscillationDetector,
     OscillationParams,
     RunningInPlace,
     oscillation,
@@ -186,6 +187,32 @@ def test_noisy_running_does_not_flicker():
     )
     engine.run(stream)
     assert backend.calls == [("down", "w"), ("up", "w")]
+
+
+@pytest.mark.parametrize("bounce", [0.05, 0.08])
+@pytest.mark.parametrize("dip_ms", [0, 200])
+@pytest.mark.parametrize("seed", range(3))
+def test_bounce_upward_from_standing_does_not_flicker_at_start(bounce, dip_ms, seed):
+    """Regression (recording 2026-11-02 17:57): real bounce goes only *up* from the
+    standing height, often after a small knee dip. Requiring both sides of a
+    baseline that still remembered standing released W ~0.5 s into the run."""
+    engine, backend = make_engine()
+    segments = [("stand", 4000), ("dip", dip_ms), ("run_up", 8000), ("stand", 3000)]
+    stream = motion_stream(
+        [s for s in segments if s[1]], bounce=bounce, frame_ms=66, jitter_px=1.0, seed=seed
+    )
+    engine.run(stream)
+    assert backend.calls == [("down", "w"), ("up", "w")]
+
+
+def test_upward_bounce_ignores_crouching_and_staying():
+    det = OscillationDetector("b", shoulder_height_px, BOUNCE)
+    assert max_score([("stand", 3000), ("crouch", 3000)], detector=det) == 0.0
+
+
+def test_sides_is_validated():
+    with pytest.raises(ValueError):
+        OscillationParams(0.1, 0.2, 0.1, 0.2, sides="down")
 
 
 @pytest.mark.parametrize("frame_ms", [50, 64])  # 20 fps; 15 fps as in the real recordings

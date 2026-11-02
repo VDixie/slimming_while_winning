@@ -9,7 +9,8 @@ recognised from two things the camera does see:
   difference of two points on the body it ignores the whole body moving.
 - **body bounce** (:func:`shoulder_height_px`): height of the shoulder midpoint
   in the image. The torso rises and falls once per step, so twice per arm
-  cycle (~2.6 Hz measured). Measured in pixels and converted to shoulder widths
+  cycle (~2.6 Hz measured), pushing *up* from standing height (scored with
+  ``sides="up"``). Measured in pixels and converted to shoulder widths
   with the *median* width over the window (see ``OscillationParams.pixel_signal``).
 
 Each signal is scored by :func:`sww.gestures.oscillation.oscillation` (it must
@@ -55,16 +56,25 @@ def shoulder_height_px(f: BodyFeatures) -> float:
 # Idle: swing <= 0.03, range <= 0.07.
 ARM_SWING = OscillationParams(swing_lo=0.08, swing_hi=0.18, range_lo=0.15, range_hi=0.35)
 
-# Running: swing p1 0.037 (median 0.105), 450 ms range p1 0.088 (median 0.22).
-# Idle: swing <= 0.009, range <= 0.020. No median filter: at ~2.6 Hz and 15 fps a
-# cycle is only ~6 samples and the filter clips the peaks.
+# Bounce is one-sided: the shoulders' lowest point while running is about their
+# standing height, and each step pushes them *up* from there. Requiring both
+# sides of the baseline (as for the arms) made W flicker off ~0.5 s into a run,
+# while the baseline still remembered standing. So only the upward side counts
+# (labelled recordings of 2026-11-02):
+#   running: up-swing min 0.076, 450 ms range p1 0.090
+#   not running: up-swing <= 0.022, range <= 0.049
+# swing_hi is set well below the running minimum so a gentler bounce than
+# measured (half the size) still scores ~1.
+# No median filter: at ~2.6 Hz and 15 fps a cycle is only ~6 samples and the
+# filter clips the peaks.
 BOUNCE = OscillationParams(
-    swing_lo=0.015,
-    swing_hi=0.035,
+    swing_lo=0.02,
+    swing_hi=0.045,
     range_lo=0.035,
     range_hi=0.07,
     smooth=False,
     pixel_signal=True,
+    sides="up",
 )
 
 

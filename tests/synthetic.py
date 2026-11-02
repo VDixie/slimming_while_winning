@@ -175,10 +175,15 @@ def motion_stream(
       ``arm`` shoulder widths (so left - right swings by 2 * ``arm``) at
       ``freq_hz``, and the whole body bounces by ``bounce`` shoulder widths
       twice per arm cycle (once per step). Defaults match the real recordings.
+    - ``"run_up"``: like ``"run"``, but the bounce only goes *up* from standing
+      height (0 .. 2 * ``bounce``), as measured on real recordings: the lowest
+      point of each step is about where you stand still.
     - ``"arms"``: the arm swing without the bounce (gesturing, seated pumping).
     - ``"bounce"``: the bounce without the arm swing (bobbing, shifting weight).
     - ``"raise_left"``: left hand raised by 3 * ``arm`` and held.
     - ``"crouch"``: whole body lowered by 3 * ``bounce`` and held.
+    - ``"dip"``: whole body lowered by ``bounce`` (the knee bend before the first
+      jump of a run; use for ~200 ms).
     - None: no person.
     """
     rng = np.random.default_rng(seed)
@@ -192,17 +197,21 @@ def motion_stream(
                 t += frame_ms
                 continue
             wrists, rise = (0.0, 0.0), 0.0
-            if activity in ("run", "arms", "bounce"):
+            if activity in ("run", "run_up", "arms", "bounce"):
                 angle = 2 * np.pi * freq_hz * phase_t / 1000
                 if activity != "bounce":
                     wrists = (arm * np.sin(angle), -arm * np.sin(angle))
                 if activity != "arms":
                     rise = bounce * np.cos(2 * angle)
+                    if activity == "run_up":
+                        rise += bounce
                 phase_t += frame_ms
             elif activity == "raise_left":
                 wrists = (3 * arm, 0.0)
             elif activity == "crouch":
                 rise = -3 * bounce
+            elif activity == "dip":
+                rise = -bounce
             frame = make_frame(
                 t, jitter_px=jitter_px, rng=rng, wrist_lift=wrists, rise=rise, **frame_kwargs
             )
