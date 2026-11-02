@@ -18,7 +18,7 @@
 |---|---|
 | Model | Logitec Brio 100 |
 | Advertised resolution / fps | 1080p / 30 fps |
-| Measured fps in my room's lighting | [to be measured in roadmap step 1] |
+| Measured fps in my room's lighting | 30 fps at 1280x720 with MJPG (DirectShow or Media Foundation); only 5 fps at 720p uncompressed (YUY2). Pose lite model: ~11 ms/frame (`sww bench`, 2026-11-02) |
 | Connection | USB 3 |
 | Mounting position | top of monitor |
 
@@ -33,7 +33,7 @@
 |---|---|
 | Seated or standing while playing | standing |
 | Distance from camera | ~1.5 m standing |
-| Visible in frame | head + torso + hands |
+| Visible in frame | head + torso + hands (knees not yet confirmed — needed for "running in place", see GESTURES.md) |
 | Lighting | daylight from window / overhead light at night |
 | Background | plain wall |
 
@@ -49,8 +49,8 @@
 ## Dev environment
 | Item | Value |
 |---|---|
-| Python version | 3.14 |
-| Package manager | pip |
+| Python version | 3.14 (confirmed: MediaPipe 1.2.0 ships a Python-version-independent Windows wheel and lists 3.9–3.14) |
+| Package manager | uv (per DECISIONS.md; install with `winget install --id=astral-sh.uv -e`) |
 | Editor / IDE | VS Code |
 | Git + hosting | GitHub |
 | Repo name / path | slimming_while_winning — C:\Users\vixie\projects\claude\slimming_while_winning |

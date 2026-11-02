@@ -28,7 +28,8 @@ Offline voice commands via Vosk with a fixed vocabulary. Same fair-play rule:
 ## Voice setup
 | Item | Value |
 |---|---|
-| Language | [e.g. English] |
-| Accent / variety | [ ] |
+| Language | English |
+| Accent / variety | South African |
+| Microphone | headset (quiet room) |
 | Push-to-talk or always listening? | [push-to-talk key / always on] |
 | Other voice apps running | [Discord / in-game voice / none] |
