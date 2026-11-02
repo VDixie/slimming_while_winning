@@ -36,7 +36,7 @@ def draw_skeleton(img: np.ndarray, frame: PoseFrame, min_visibility: float = 0.5
 
 
 class History:
-    """Last ``length`` frames of each gesture's score and, if present, its ``signal`` detail.
+    """Last ``length`` frames of each gesture's score and any ``...signal`` details.
 
     Feeds the rolling graphs drawn with ``--debug`` (about 5 s at 30 fps).
     """
@@ -45,14 +45,20 @@ class History:
         self.length = length
         self.series: dict[str, deque[float | None]] = {}
 
-    def _add(self, key: str, value: float | None) -> None:
-        self.series.setdefault(key, deque(maxlen=self.length)).append(value)
-
     def update(self, step: StepResult) -> None:
+        """Append one value to every series (None where it's missing this frame)."""
+        values: dict[str, float | None] = {}
         for name, ev in step.evaluations.items():
-            self._add(f"{name} score", ev.score)
-            if "signal" in ev.details or f"{name} signal" in self.series:
-                self._add(f"{name} signal", ev.details.get("signal"))
+            values[f"{name} score"] = ev.score
+            for key, value in ev.details.items():
+                if key.endswith("signal"):
+                    values[f"{name} {key}"] = value
+        frames_so_far = max((len(s) for s in self.series.values()), default=0)
+        for label in [k for k in values if k not in self.series]:  # keeps a stable order
+            # Pad a new series so all graphs share the same time axis.
+            self.series[label] = deque([None] * frames_so_far, maxlen=self.length)
+        for label, series in self.series.items():
+            series.append(values.get(label))
 
 
 def _draw_plot(

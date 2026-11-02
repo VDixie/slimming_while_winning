@@ -8,7 +8,7 @@ Everything runs locally on the CPU. See `PROJECT_INSTRUCTIONS.md` and `docs/`.
 | Gesture | Key | Mode |
 |---|---|---|
 | Hand on top of your head | `B` | tap (one press + release) |
-| Running in place (knees) | `W` | hold (one key-down while running, one key-up when you stop) |
+| Running in place (arm swing + upper-body bounce) | `W` | hold (one key-down while running, one key-up when you stop) |
 
 Pause/resume all output anywhere with **Ctrl+Alt+P** (all held keys are released).
 
@@ -28,12 +28,14 @@ uv run pytest                             # webcam-free tests
    ```powershell
    uv run sww run --debug
    ```
-   Stand where you play with your knees in view, then run in place. Expect
-   `[dry run] DOWN 'w'` about 0.3-0.5 s after you start and `[dry run] UP 'w'`
-   about 0.5 s after you stop, **once each** per run. The graphs (bottom right) show
-   the `running_in_place` score and the knee signal (left knee minus right knee
-   height, which should swing back and forth evenly). Also try:
-   - standing still, shifting your weight, lifting one knee: no `DOWN`
+   Stand where you play and run in place, swinging your arms naturally. Expect
+   `[dry run] DOWN 'w'` about 0.5 s after you start and `[dry run] UP 'w'` about
+   0.6 s after you stop, **once each** per run. The graphs (bottom right) show the
+   `running_in_place` score, the arm-swing signal (left minus right wrist height)
+   and the bounce signal (shoulder height); both should swing evenly while running.
+   The score needs **both**. Also try:
+   - standing still, gesturing with your arms, bobbing or shifting weight without
+     swinging your arms: no `DOWN`
    - **Ctrl+Alt+P** while running: `RELEASE 'w' (paused)`, then `PAUSED`; again to resume.
      It works while another window has focus. You must stop and start running again
      after resuming (a resume never presses keys by itself).
@@ -70,9 +72,7 @@ uv run pytest                             # webcam-free tests
    run forward while you run in place and stop about half a second after you stop.
    If it doesn't stop: press Ctrl+Alt+P, or tap W on the keyboard.
 
-**Knees must be inside the picture** for the default `--forward knees` (the knee dots, not just
-skeleton lines running off the bottom edge). If they aren't, use `--forward arms`: it detects
-the natural arm swing while running in place (tuned on real recordings), and also works seated.
+Seated? `--forward arms` uses the arm swing alone (no bounce needed).
 
 ## Safety
 
@@ -90,7 +90,7 @@ the natural arm swing while running in place (tuned on real recordings), and als
 | `--send` | Really send keys (default is a dry run) |
 | `--window TEXT` | Only send while the foreground window title contains TEXT |
 | `--head-key KEY` | Key tapped by hand on head (default `b`; `--key` still works) |
-| `--forward knees/arms/off` | Forward gesture: running in place, pumping arms, or none |
+| `--forward run/arms/off` | Forward gesture: running in place (arms + bounce), pumping arms only (seated), or none |
 | `--forward-key KEY` | Key held while running (default `w`) |
 | `--forward-off-ms N` | How long you must stop before the key is released (default 200) |
 | `--pause-hotkey SPEC` | Global pause hotkey, e.g. `ctrl+alt+p` (default), `pause`, `ctrl+shift+f9` |
@@ -123,7 +123,8 @@ src/sww/
   features.py     body frame: origin mid-shoulders, y up, unit = shoulder width
   window.py       rolling window of recent body frames (time-bounded)
   gestures/       detectors (score 0..1): hand_on_head.py (static),
-                  alternating.py (running in place / pumping arms)
+                  oscillation.py (generic rhythmic-signal rule),
+                  running.py (arm swing + body bounce)
   state.py        hysteresis + debounce → START/END events
   actions.py      gesture → key mapping (tap / hold), pause, safety releases
   engine.py       window → detectors → state → actions, per frame (replayable)

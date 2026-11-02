@@ -7,7 +7,7 @@ from synthetic import motion_stream
 
 from sww.actions import ActionKind, ActionMapper, Mapping, Mode
 from sww.engine import Engine
-from sww.gestures import RUNNING_IN_PLACE, AlternatingMotion, HandOnHead
+from sww.gestures import HandOnHead, RunningInPlace
 from sww.output import RecordingBackend
 from sww.output.hotkey import MOD_ALT, MOD_CONTROL, MOD_SHIFT, GlobalHotkey, parse_hotkey
 from sww.output.keys import key_to_vk
@@ -130,7 +130,7 @@ def test_release_all_continues_after_a_backend_error():
 
 def make_engine(gate=None):
     backend = RecordingBackend()
-    run = AlternatingMotion("run", RUNNING_IN_PLACE)
+    run = RunningInPlace("run")
     head = HandOnHead("head")
     mapper = ActionMapper([Mapping("run", "w", Mode.HOLD), Mapping("head", "b")], backend, gate)
     engine = Engine([head, run], mapper, {"run": DebounceConfig(min_off_ms=200)})

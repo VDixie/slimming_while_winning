@@ -4,7 +4,7 @@ Commands:
     sww download-models   Fetch the MediaPipe pose model(s) (one-time, needs internet).
     sww keytest           Send one key after a countdown, to check SendInput reaches an app.
     sww run               Webcam → pose → gestures → keys (hand on head → tap B,
-                          running in place → hold W).
+                          running in place (arm swing + body bounce) → hold W).
     sww record            Save pose landmarks from the webcam to a .npz file.
     sww replay            Run the gesture engine on a recording (nothing is sent).
     sww bench             Measure camera fps and model speed separately.
@@ -71,7 +71,7 @@ def build_engine(
     """
     from sww.actions import ActionMapper, Mapping, Mode
     from sww.engine import Engine
-    from sww.gestures import PUMPING_ARMS, RUNNING_IN_PLACE, AlternatingMotion, HandOnHead
+    from sww.gestures import HandOnHead, RunningInPlace, pumping_arms
     from sww.state import DebounceConfig
 
     head = HandOnHead()
@@ -81,11 +81,12 @@ def build_engine(
     described = [f"hand on head -> tap '{args.head_key}'"]
 
     if args.forward != "off":
-        name, params, label = {
-            "knees": ("running_in_place", RUNNING_IN_PLACE, "running in place (knees)"),
-            "arms": ("pumping_arms", PUMPING_ARMS, "pumping arms (wrists)"),
-        }[args.forward]
-        detectors.append(AlternatingMotion(name, params))
+        if args.forward == "run":
+            forward, label = RunningInPlace(), "running in place (arm swing + body bounce)"
+        else:
+            forward, label = pumping_arms(), "pumping arms, seated (arm swing only)"
+        name = forward.name
+        detectors.append(forward)
         mappings.append(Mapping(name, args.forward_key, Mode.HOLD))
         # Off-debounce bridges the short pause at the top of each stride.
         debounce[name] = DebounceConfig(min_on_ms=50, min_off_ms=args.forward_off_ms)
@@ -522,9 +523,10 @@ def _gesture_options() -> argparse.ArgumentParser:
     )
     g.add_argument(
         "--forward",
-        choices=["knees", "arms", "off"],
-        default="knees",
-        help="forward gesture: running in place (knees), pumping arms (seated), or off",
+        choices=["run", "arms", "off"],
+        default="run",
+        help="forward gesture: running in place (arm swing + body bounce), "
+        "pumping arms (seated, arm swing only), or off",
     )
     g.add_argument(
         "--forward-key",

@@ -8,6 +8,35 @@ Format: **Decision** — Why — Alternatives considered
 
 ---
 
+## 2026-11-02 — Running = arm swing AND body bounce; knees removed
+
+- **Knees removed as an input** (out of frame at the play position; see below).
+  `--forward knees` is gone; `--forward run` is the default, `--forward arms` stays
+  for seated play.
+- **Running in place = min(arm swing score, body bounce score).** Neither alone is
+  enough: arms without bounce = gesturing or seated pumping; bounce without arms =
+  bobbing, shifting weight, laughing. Same rule for both signals (moves both ways
+  around a 3 s median baseline within 1 s, and still moving in the last 450 ms), so
+  the old `AlternatingMotion` became a generic `oscillation()` over any per-frame
+  signal (`gestures/oscillation.py`), and running lives in `gestures/running.py`.
+  — Checking that bounce runs at twice the arm frequency: an even stronger running
+  signature, but needs frequency estimation on 1 s of 15 fps data; kept for later if
+  false triggers appear.
+- **Bounce signal = shoulder midpoint height**, compared with hips and nose on the
+  recordings: shoulders separate best (running swing p1 0.048 vs idle max 0.007,
+  range p1 0.094 vs 0.019). Hips sit at the image edge and are noisier; the nose
+  also moves when nodding.
+- **No median filter for bounce.** At ~2.6 Hz and 15 fps a bounce cycle is ~6 samples
+  and the filter clips the peaks (swing p1 0.048 → 0.039).
+- **Bounce is measured in pixels and scaled by the median shoulder width over the
+  window**, not frame by frame. Found by the "arms only must not trigger" test:
+  dividing each frame by its own shoulder width turns ~1% width jitter into fake
+  bounce, multiplied by the shoulders' distance from the image top in shoulder
+  widths (~0.5 in the recordings, but 2.25 in the synthetic frames, and larger if
+  you stand further back). Real-data margins unchanged after the fix.
+- **Bounce thresholds:** swing 0.015–0.035, range 0.035–0.07 shoulder widths. On the
+  running recording the bounce term stays ≥ 0.99 throughout; idle stays at 0.
+
 ## 2026-11-02 — Tuning on the first real recordings
 
 Data: `recordings/running_20261102-141337` and `idle_20261102-141424` (15 s each, 15 fps).
