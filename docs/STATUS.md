@@ -4,14 +4,14 @@
 > not a history (history goes in DECISIONS.md, docs/sessions/ and Git).
 
 **Last updated:** 2026-11-02
-**Current roadmap step:** 2 — Built; running (arm swing + bounce) tuned on real recordings; live tests pending
+**Current roadmap step:** 2 — Built and tuned on 4 real recordings; PR from `step-2-hold-running` open; live tests pending
 
 ## Roadmap
 | Step | Description | Status |
 |---|---|---|
 | 0 | Project instructions, context files, initial decisions | ✅ Done |
 | 1 | CLI: webcam → landmarks → one rule-based static gesture → one key tap (test in Notepad, then WoW) | ✅ Done (verified in Notepad and WoW) |
-| 2 | Hold behaviour + one dynamic gesture (running in place → hold W) | 🟡 Built; tuned on recordings (arm swing + bounce); live, Notepad and WoW tests pending |
+| 2 | Hold behaviour + one dynamic gesture (running in place → hold W) | 🟡 Built; tuned on labelled recordings; PR open; live, Notepad and WoW tests pending |
 | 3 | YAML config, calibration, ~~pause hotkey, safety releases~~ (moved to step 2) | ⬜ |
 | 4 | Landmark recording to file + trained classifier for custom gestures | ⬜ (recording done early, in step 2) |
 | 5 | Voice commands (Vosk) | ⬜ |
@@ -20,7 +20,7 @@
 
 ## What works
 - Step 1: hand on head → tap B, verified with `--send` in Notepad and WoW
-- Step 2 (synthetic tests only so far):
+- Step 2 (synthetic tests + replay of real recordings; not yet tested live):
   - **Hold mode**: one key-down on gesture start, one key-up on end; never a second key-down
   - **Running in place → hold W** = arm swing AND upper-body bounce (`RunningInPlace`,
     `--forward run`, default); `--forward arms` = arm swing only (seated)
@@ -71,6 +71,6 @@
 6. Then step 3: YAML config + hot reload, neutral-pose calibration
 
 ## Open questions
-- Is ~0.5 s stop latency acceptable in WoW, or should we trade some false-stop
-  robustness for speed (shorter `recent_ms` / `--forward-off-ms`)?
+- Real start delay is 0.8–1.0 s (stop ~0.2 s). Acceptable in WoW, or should the arm
+  signal start sooner (e.g. lower `min_coverage` while wrists come into view)?
 - Push-to-talk or always-listening for voice?
