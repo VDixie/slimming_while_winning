@@ -21,8 +21,8 @@ sends. Rows marked **(suggested)** are ideas to confirm, edit or delete.
 | # | Gesture (how I perform it) | Type | Body part | WoW action | Key | Mode | Priority | Seated OK? | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | Hand on top of head | Static | Either hand | Open all bags | B | Tap | 1 | Yes | Working (Notepad + WoW) |
-| 2 | Running in place (knees alternating up/down) | Dynamic | Body | Move forward | W | Hold | 1 | No (see #3) | Built — live tuning pending |
-| 3 | Pumping arms as if running | Dynamic | Both hands | Move forward (seated alternative to #2) | W | Hold | 2 | Yes | Built (`--forward arms`), untested live |
+| 2 | Running in place (knees alternating up/down) | Dynamic | Body | Move forward | W | Hold | 1 | No (see #3) | Built, but knees are out of frame: needs camera reframing |
+| 3 | Pumping arms as if running | Dynamic | Both hands | Move forward (also natural arm swing while running in place) | W | Hold | 1 | Yes | Tuned on recordings (`--forward arms`); live test pending |
 | 4 | (suggested) Lean torso left | Static | Body | Strafe left | Q | Hold | 2 | Yes | Idea |
 | 5 | (suggested) Lean torso right | Static | Body | Strafe right | E | Hold | 2 | Yes | Idea |
 | 6 | (suggested) Both arms raised overhead | Static | Both hands | Jump | Space | Tap | 2 | Yes | Idea |
@@ -41,10 +41,13 @@ sends. Rows marked **(suggested)** are ideas to confirm, edit or delete.
 | [e.g. both hands crossed in an X] | Pause / resume input | Keyboard hotkey remains the main kill switch |
 
 ## Camera framing
-- "Running in place" (#2) is detected from the knees. Confirmed 2026-11-02: the
-  knees are visible at the standing play position. If they drop out of frame
-  (score shows `visible = 0` in `--debug`), tilt the camera down, step back, or use
-  `--forward arms`.
+- "Running in place" (#2) is detected from the knees. The 2026-11-02 recordings
+  show the knees are **below the image** at the current play position (the hips
+  sit at the bottom edge). The preview's skeleton lines running off the bottom
+  can look like visible legs, but they're MediaPipe's guesses. To use #2: tilt
+  the camera down or step back until the knee dots are inside the picture.
+  Meanwhile `--forward arms` (#3) works, because you swing your arms when you
+  run in place.
 
 ## Conflicts to watch
 - Gestures that look alike to the camera (e.g. #1 vs #6 mid-motion) need

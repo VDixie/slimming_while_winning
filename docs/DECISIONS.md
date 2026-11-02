@@ -8,6 +8,33 @@ Format: **Decision** — Why — Alternatives considered
 
 ---
 
+## 2026-11-02 — Tuning on the first real recordings
+
+Data: `recordings/running_20261102-141337` and `idle_20261102-141424` (15 s each, 15 fps).
+- **The knees are not in the camera image** (normalised y ≈ 1.3; the hips are at the bottom
+  edge, y ≈ 0.85). This supersedes "knees are visible" below. MediaPipe guessed their
+  positions, with visibility 0.6–0.7 when standing. Guessed knees carry no running signal
+  (1 s peak-to-peak 0.09 running vs 0.10 idle).
+- **Landmarks outside the image now count as not visible** (`features.OFF_IMAGE_MARGIN`),
+  whatever MediaPipe's visibility says. — Raising the visibility cutoff: would also
+  reject real but partly occluded points, and 0.7 guesses would still pass.
+- **Natural arm swing is a strong running signal:** wrist difference peak-to-peak 0.85
+  running vs 0.06 idle, alternating at 1.33 Hz (stride rate). Body bounce is also clear
+  (0.23 vs 0.01 at 2.6 Hz, one bounce per step); kept in reserve, not implemented.
+- **`PUMPING_ARMS` retuned from a parameter sweep:** swing 0.08–0.18, range 0.15–0.35,
+  picked from the middle of the region that gives exactly one key-down on the running
+  recording and a zero score on idle. Before: swing 0.20–0.40 / range 0.30–0.60 gave
+  6 starts (flicker).
+- **`recent_ms` 350 → 450 ms (both presets).** At a real 1.33 Hz cadence a 350 ms window
+  can sit inside one half-swing, so the range term dropped at every turning point.
+  450 ms covers down to ~1.1 Hz. Cost: ~50–100 ms more stop latency (now ~0.55–0.75 s).
+- **Recordings ran at 15 fps** (very regular 64 ms frames, so the camera was delivering
+  15 fps, not processing falling behind), versus 30 fps in earlier live runs. Likely the
+  camera's auto-exposure in lower light; to be checked with `sww bench`. The detector is
+  now tested at 15 fps.
+- **`tests/test_real_recordings.py`** replays any local recordings labelled `running` /
+  `idle`; skipped when there are none, so private data stays out of git.
+
 ## 2026-11-02 — Roadmap step 2 implementation
 
 - **Knees are visible, so running in place (#2) is the forward gesture.** One

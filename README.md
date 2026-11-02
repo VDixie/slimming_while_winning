@@ -70,7 +70,9 @@ uv run pytest                             # webcam-free tests
    run forward while you run in place and stop about half a second after you stop.
    If it doesn't stop: press Ctrl+Alt+P, or tap W on the keyboard.
 
-Seated? `--forward arms` uses pumping arms (alternating wrists) instead of knees.
+**Knees must be inside the picture** for the default `--forward knees` (the knee dots, not just
+skeleton lines running off the bottom edge). If they aren't, use `--forward arms`: it detects
+the natural arm swing while running in place (tuned on real recordings), and also works seated.
 
 ## Safety
 

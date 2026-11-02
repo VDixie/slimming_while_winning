@@ -30,7 +30,7 @@ The score is the minimum (fuzzy AND) of two terms:
    baseline adapts to stance and camera angle (e.g. one foot slightly
    forward). Requiring both sides rejects a single knee lift or shifting your
    weight onto one leg.
-2. **recent motion** (look-back ``recent_ms``, ~350 ms): peak-to-peak range of
+2. **recent motion** (look-back ``recent_ms``, ~450 ms): peak-to-peak range of
    ``s`` must still be large. This is what makes the gesture end quickly when
    you stop: the swing term remembers the last second, this one doesn't.
 
@@ -77,7 +77,9 @@ class AlternatingParams:
         swing_ms: Look-back for the swing term. Must cover at least one full
             stride at the slowest pace you want detected.
         recent_ms: Look-back for the recent-motion term. Must cover at least
-            half a stride, or the score dips between steps.
+            half a stride cycle, or the score dips at every turning point
+            (350 ms was too short for a real 1.33 Hz cadence; 450 ms covers
+            down to ~1.1 Hz).
         baseline_ms: Look-back for the standing baseline (median).
         min_coverage: Fraction of frames in ``swing_ms`` where both points
             must be visible.
@@ -90,7 +92,7 @@ class AlternatingParams:
     range_lo: float
     range_hi: float
     swing_ms: int = 1000
-    recent_ms: int = 350
+    recent_ms: int = 450
     baseline_ms: int = 3000
     min_coverage: float = 0.6
     min_visibility: float = DEFAULT_MIN_VISIBILITY
@@ -111,14 +113,16 @@ RUNNING_IN_PLACE = AlternatingParams(
     range_hi=0.35,
 )
 
-# Wrists swing further than knees and jitter more, so the thresholds are higher.
+# Tuned on real recordings (2026-11-02, 15 fps, natural arm swing while running in
+# place at ~1.33 Hz). Running: swing p5 0.21 (median 0.32), 450 ms range p1 ~0.4.
+# Idle standing: swing <= 0.03, range <= 0.07. Thresholds sit between the two.
 PUMPING_ARMS = AlternatingParams(
     left=Pose.LEFT_WRIST,
     right=Pose.RIGHT_WRIST,
-    swing_lo=0.20,
-    swing_hi=0.40,
-    range_lo=0.30,
-    range_hi=0.60,
+    swing_lo=0.08,
+    swing_hi=0.18,
+    range_lo=0.15,
+    range_hi=0.35,
 )
 
 

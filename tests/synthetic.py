@@ -125,8 +125,9 @@ def make_frame(
             standing further from / closer to the camera).
         hidden: Landmarks to mark as not visible.
         jitter_px: Std-dev of Gaussian noise added to every point, in pixels.
-        legs_visible: Mark knees/ankles/feet visible (camera sees the legs).
-            Their coordinates may lie below the image; only visibility matters.
+        legs_visible: Mark knees/ankles/feet visible. At ``scale=1`` the legs
+            lie below the 720p image (and so count as not visible whatever
+            this says); use ``scale <= 0.5`` to bring them into frame.
         knee_lift: (left, right) knee raise in shoulder widths; the lower leg
             moves up with it.
         wrist_lift: (left, right) raise of a hanging hand in shoulder widths.
@@ -179,8 +180,11 @@ def motion_stream(
     in turn, ``freq_hz`` strides per second per leg, peak ``lift`` shoulder
     widths), ``"lift_left"`` (left part raised and held), or None (no person).
     ``part`` is ``"knee"`` (running in place, legs visible) or ``"wrist"``
-    (pumping arms).
+    (pumping arms). For knees the person defaults to ``scale=0.5`` so the
+    legs are inside the image.
     """
+    if part == "knee":
+        frame_kwargs.setdefault("scale", 0.5)
     rng = np.random.default_rng(seed)
     t = t0
     run_phase_t = 0
