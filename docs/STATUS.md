@@ -29,14 +29,15 @@
   - **Safety releases**: gesture end, pause, focus loss (checked every frame), person
     lost for 150 ms, camera stall, exit/exception/Ctrl+C, console window closed.
     Re-arm rule: no automatic re-press after a safety release
-  - `sww record` (landmarks → .npz) and `sww replay` (same engine, dry run, CSV export)
+  - `sww record` (landmarks → .npz, then automatically replayed into a per-frame .csv)
+    and `sww replay` (same engine, dry run, `--csv` to refresh the CSV)
   - `sww keytest --hold-s N` to test a single injected hold
   - `--debug` rolling graphs of the score, arm-swing and bounce signals
 - **First real recordings** (running + idle): knees turned out to be out of frame and
   were removed. Arm swing and bounce were tuned on them: one key-down for the whole
   running recording, nothing on idle, in both `run` and `arms` modes
 - Off-screen landmarks are now ignored (MediaPipe guesses them with high visibility)
-- 133 tests pass (incl. replay of local recordings when present); Ruff clean
+- 135 tests pass (incl. replay of local recordings when present); Ruff clean
 
 ## Performance
 - Ryzen 9 5900X, Logitech Brio 100: camera-bound at 30 fps (720p MJPG); pose lite ~11 ms/frame

@@ -87,3 +87,10 @@ def test_replay_with_forward_off(tmp_path, capsys):
     path = sample_recording().save(tmp_path / "run.npz")
     assert main(["replay", str(path), "--forward", "off"]) == 0
     assert "DOWN" not in capsys.readouterr().out
+
+
+def test_replay_csv_without_path_writes_next_to_recording(tmp_path, capsys):
+    path = sample_recording().save(tmp_path / "run.npz")
+    assert main(["replay", str(path), "--csv"]) == 0
+    assert (tmp_path / "run.csv").exists()
+    assert "run.csv" in capsys.readouterr().out

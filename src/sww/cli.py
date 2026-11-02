@@ -5,7 +5,8 @@ Commands:
     sww keytest           Send one key after a countdown, to check SendInput reaches an app.
     sww run               Webcam → pose → gestures → keys (hand on head → tap B,
                           running in place (arm swing + body bounce) → hold W).
-    sww record            Save pose landmarks from the webcam to a .npz file.
+    sww record            Save pose landmarks from the webcam to a .npz file, then
+                          replay it into a per-frame .csv next to it.
     sww replay            Run the gesture engine on a recording (nothing is sent).
     sww bench             Measure camera fps and model speed separately.
 
@@ -397,23 +398,27 @@ def cmd_record(args: argparse.Namespace) -> int:
         f"Saved {out}: {len(rec)} frames, {rec.duration_ms / 1000:.1f} s, {fps:.1f} fps, "
         f"person tracked in {rec.person_present.mean():.0%} of frames."
     )
-    print(f"Replay it with: uv run sww replay {out}")
+    if not args.no_csv:
+        # Same as `sww replay <file> --csv`, so the CSV is ready without a second step.
+        print()
+        _replay(rec, args, str(out), out.with_suffix(".csv"))
+    print()
+    print(f"Re-run later (e.g. after tuning) with: uv run sww replay {out} --csv")
     return 0
 
 
-def cmd_replay(args: argparse.Namespace) -> int:
-    from sww.recording import Recording
+def _replay(rec, args: argparse.Namespace, name: str, csv_path: Path | None) -> None:
+    """Run the gesture engine over a recording (nothing is sent); print actions and a summary.
 
-    rec = Recording.load(Path(args.file))
-    if not len(rec):
-        print("Empty recording.", file=sys.stderr)
-        return 1
+    Writes one CSV row per frame (scores, active flags, every rule value) to
+    ``csv_path`` if given. Shared by ``replay`` and ``record``.
+    """
     backend = RecordingBackend()
     engine, described = build_engine(args, backend)
     t0 = int(rec.timestamps_ms[0])
     fps = (len(rec) - 1) / (rec.duration_ms / 1000) if rec.duration_ms else 0.0
     print(
-        f"{args.file}: label={rec.meta.get('label')!r}, {len(rec)} frames, "
+        f"{name}: label={rec.meta.get('label')!r}, {len(rec)} frames, "
         f"{rec.duration_ms / 1000:.1f} s, {fps:.1f} fps, "
         f"person in {rec.person_present.mean():.0%} of frames"
     )
@@ -430,15 +435,15 @@ def cmd_replay(args: argparse.Namespace) -> int:
         step = engine.step(frame, ts)
         _log_actions(step.actions, send=True, t0_ms=t0)
         row: dict[str, object] = {"t_ms": ts - t0, "person": int(frame is not None)}
-        for name, ev in step.evaluations.items():
+        for gesture, ev in step.evaluations.items():
             if ev.score is not None:
-                max_score[name] = max(max_score.get(name, 0.0), ev.score)
-            if step.active.get(name):
-                active_ms[name] = active_ms.get(name, 0) + (ts - prev_t)
-            row[f"{name}.score"] = "" if ev.score is None else round(ev.score, 4)
-            row[f"{name}.active"] = int(step.active.get(name, False))
+                max_score[gesture] = max(max_score.get(gesture, 0.0), ev.score)
+            if step.active.get(gesture):
+                active_ms[gesture] = active_ms.get(gesture, 0) + (ts - prev_t)
+            row[f"{gesture}.score"] = "" if ev.score is None else round(ev.score, 4)
+            row[f"{gesture}.active"] = int(step.active.get(gesture, False))
             for key, value in ev.details.items():
-                row[f"{name}.{key}"] = round(value, 4)
+                row[f"{gesture}.{key}"] = round(value, 4)
         for event in step.events:
             if event.kind == "start":
                 starts[event.gesture] = starts.get(event.gesture, 0) + 1
@@ -446,7 +451,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
         prev_t = ts
     _log_actions(engine.shutdown("end of recording", prev_t), send=True, t0_ms=t0)
 
-    print("\nSummary:")
+    print()
+    print("Summary:")
     for det in engine.detectors:
         n = det.name
         print(
@@ -454,17 +460,33 @@ def cmd_replay(args: argparse.Namespace) -> int:
             f"| max score {max_score.get(n, 0.0):.2f}"
         )
 
-    if args.csv:
+    if csv_path is not None:
         fields: list[str] = []
         for row in rows:
             fields.extend(k for k in row if k not in fields)
-        path = Path(args.csv)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", newline="") as f:
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        with csv_path.open("w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fields, restval="")
             writer.writeheader()
             writer.writerows(rows)
-        print(f"Per-frame scores and rule values written to {path} ({len(rows)} rows).")
+        print(f"Per-frame scores and rule values written to {csv_path} ({len(rows)} rows).")
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    from sww.recording import Recording
+
+    path = Path(args.file)
+    rec = Recording.load(path)
+    if not len(rec):
+        print("Empty recording.", file=sys.stderr)
+        return 1
+    # --csv alone writes next to the recording; --csv FILE writes there.
+    csv_path = (
+        None
+        if args.csv is None
+        else (path.with_suffix(".csv") if args.csv == "auto" else Path(args.csv))
+    )
+    _replay(rec, args, args.file, csv_path)
     return 0
 
 
@@ -598,20 +620,33 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--stats-every", type=float, default=5.0, help="seconds between perf lines")
     p.set_defaults(func=cmd_run)
 
-    p = sub.add_parser("record", parents=[camera], help="save pose landmarks to a .npz file")
+    p = sub.add_parser(
+        "record",
+        parents=[gestures, camera],
+        help="save pose landmarks to a .npz file (and a per-frame replay .csv next to it)",
+    )
     p.add_argument("--label", default="session", help="what you're doing, e.g. running, idle")
     p.add_argument("--notes", default="", help="free text stored in the file")
     p.add_argument("--seconds", type=float, default=15.0, help="recording length")
     p.add_argument("--countdown", type=int, default=3, help="seconds before recording starts")
     p.add_argument("--out", help="output file (default: recordings/<label>_<time>.npz)")
     p.add_argument("--recordings-dir", default="recordings")
+    p.add_argument(
+        "--no-csv", action="store_true", help="don't replay the recording into a .csv afterwards"
+    )
     p.set_defaults(func=cmd_record)
 
     p = sub.add_parser(
         "replay", parents=[gestures], help="run the gesture engine on a recording (dry run)"
     )
     p.add_argument("file", help="a .npz file from `sww record`")
-    p.add_argument("--csv", help="write per-frame scores and rule values to this CSV file")
+    p.add_argument(
+        "--csv",
+        nargs="?",
+        const="auto",
+        help="write per-frame scores and rule values to a CSV "
+        "(default path: the recording's name with .csv)",
+    )
     p.set_defaults(func=cmd_replay)
 
     p = sub.add_parser("bench", help="measure camera fps and model speed separately")

@@ -46,12 +46,13 @@ uv run pytest                             # webcam-free tests
    ```powershell
    uv run sww record --label running --seconds 20   # stand ~5 s, run ~10 s, stand ~5 s
    uv run sww record --label idle --seconds 30      # normal play movements, no running
-   uv run sww replay recordings\running_<time>.npz --csv recordings\running.csv
    ```
-   `replay` runs the same engine as `run` and prints every action, how long each
-   gesture was active and its peak score. The CSV has one row per frame with every
-   rule value, ready for pandas. Send me the replay output (or the files) and I'll
-   tune the thresholds on your real data.
+   Each recording is replayed straight away through the same engine as `run`
+   (nothing is sent). It prints every action, how long each gesture was active and
+   its peak score, and writes `recordings\<label>_<time>.csv` next to the `.npz`:
+   one row per frame with every rule value, ready for pandas. `--no-csv` skips this.
+   After changing detectors, refresh a CSV with `uv run sww replay <file>.npz --csv`.
+   Send me the output (or the files) and I'll tune the thresholds on your real data.
 
 3. **Hold a key on its own, in Notepad** (no camera):
    ```powershell

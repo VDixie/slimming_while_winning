@@ -1,5 +1,7 @@
 """Smoke-test the `sww run` loop with a fake camera and fake tracker (no webcam, no model)."""
 
+import csv
+
 import numpy as np
 from synthetic import make_frame
 
@@ -124,4 +126,21 @@ def test_record_saves_landmarks(monkeypatch, tmp_path, capsys):
     assert rec.meta["label"] == "idle"
     assert rec.timestamps_ms[0] >= 1000 and rec.timestamps_ms[-1] < 3000
     assert 55 <= len(rec) <= 62
-    assert "Saved" in capsys.readouterr().out
+    stdout = capsys.readouterr().out
+    assert "Saved" in stdout and "Summary:" in stdout
+    # The replay CSV is written automatically next to the recording.
+    csv_path = out.with_suffix(".csv")
+    with csv_path.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == len(rec)
+    assert {"t_ms", "hand_on_head.score", "running_in_place.score"} <= set(rows[0])
+
+
+def test_record_no_csv(monkeypatch, tmp_path):
+    monkeypatch.setattr(sww.capture, "LatestFrameCamera", lambda *a, **k: FakeCamera(n_frames=200))
+    monkeypatch.setattr(sww.tracking, "PoseTracker", FakeTracker)
+    monkeypatch.setattr(sww.capture, "now_ms", lambda: 0)
+    out = tmp_path / "r.npz"
+    args = ["record", "--no-preview", "--countdown", "0", "--seconds", "1", "--out", str(out)]
+    assert main([*args, "--no-csv"]) == 0
+    assert out.exists() and not out.with_suffix(".csv").exists()

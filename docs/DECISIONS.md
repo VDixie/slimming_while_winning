@@ -8,6 +8,15 @@ Format: **Decision** — Why — Alternatives considered
 
 ---
 
+## 2026-11-02 — `sww record` writes the replay CSV automatically
+
+- **After saving, `record` replays the recording and writes `<name>.csv` next to the
+  `.npz`** (opt out with `--no-csv`); `record` takes the same gesture options as `run`.
+  Removes a manual step. The CSV reflects the detectors *at recording time*; after
+  changing detectors, `sww replay <file> --csv` (no path = next to the recording)
+  refreshes it. — Writing only the CSV and no `.npz`: the `.npz` is the raw data
+  needed to re-score with future detectors and for step 4 training.
+
 ## 2026-11-02 — Running = arm swing AND body bounce; knees removed
 
 - **Knees removed as an input** (out of frame at the play position; see below).
