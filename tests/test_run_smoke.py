@@ -53,7 +53,7 @@ class FakeTracker:
 def test_run_loop_dry_run_taps_once(monkeypatch, capsys):
     monkeypatch.setattr(sww.capture, "LatestFrameCamera", FakeCamera)
     monkeypatch.setattr(sww.tracking, "PoseTracker", FakeTracker)
-    assert main(["run", "--no-preview", "--stats-every", "0.5"]) == 0
+    assert main(["run", "--no-preview", "--no-pause-hotkey", "--stats-every", "0.5"]) == 0
     out = capsys.readouterr().out
     assert out.count("[dry run] TAP 'b'") == 1
     assert "[perf" in out
@@ -80,3 +80,48 @@ def test_fourcc_decoding():
 def test_bench_model_only_reports_missing_models(tmp_path, capsys):
     assert main(["bench", "--skip-camera", "--models-dir", str(tmp_path)]) == 1
     assert "not downloaded" in capsys.readouterr().out
+
+
+class FakeRunningTracker(FakeTracker):
+    """Stands for 1 s, runs in place for 3 s, then stands (legs visible)."""
+
+    def __init__(self, model_path, **kwargs):
+        from synthetic import motion_stream
+
+        stream = motion_stream([("stand", 1000), ("run", 3000), ("stand", 2000)])
+        self._frames = {t: f for f, t in stream}
+
+    def process(self, image, timestamp_ms):
+        return self._frames.get(timestamp_ms)
+
+
+def test_run_loop_holds_w_while_running_and_releases(monkeypatch, capsys):
+    monkeypatch.setattr(sww.capture, "LatestFrameCamera", lambda *a, **k: FakeCamera(n_frames=180))
+    monkeypatch.setattr(sww.tracking, "PoseTracker", FakeRunningTracker)
+    assert main(["run", "--no-preview", "--no-pause-hotkey", "--stats-every", "60"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("[dry run] DOWN 'w'") == 1
+    assert out.count("[dry run] UP 'w'") == 1
+    assert "RELEASE" not in out  # ended normally, nothing left to release at exit
+
+
+def test_run_refuses_send_without_pause_hotkey(capsys):
+    assert main(["run", "--send", "--no-pause-hotkey", "--no-preview"]) == 2
+    assert "kill switch" in capsys.readouterr().err
+
+
+def test_record_saves_landmarks(monkeypatch, tmp_path, capsys):
+    from sww.recording import Recording
+
+    monkeypatch.setattr(sww.capture, "LatestFrameCamera", lambda *a, **k: FakeCamera(n_frames=500))
+    monkeypatch.setattr(sww.tracking, "PoseTracker", FakeTracker)
+    # Fake clock: the countdown and duration are measured against frame timestamps.
+    monkeypatch.setattr(sww.capture, "now_ms", lambda: 0)
+    out = tmp_path / "r.npz"
+    args = ["record", "--no-preview", "--countdown", "1", "--seconds", "2", "--out", str(out)]
+    assert main([*args, "--label", "idle"]) == 0
+    rec = Recording.load(out)
+    assert rec.meta["label"] == "idle"
+    assert rec.timestamps_ms[0] >= 1000 and rec.timestamps_ms[-1] < 3000
+    assert 55 <= len(rec) <= 62
+    assert "Saved" in capsys.readouterr().out

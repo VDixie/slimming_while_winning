@@ -113,6 +113,9 @@ def make_frame(
     hidden: tuple[Pose, ...] = (),
     jitter_px: float = 0.0,
     rng: np.random.Generator | None = None,
+    legs_visible: bool = False,
+    knee_lift: tuple[float, float] = (0.0, 0.0),
+    wrist_lift: tuple[float, float] = (0.0, 0.0),
 ) -> PoseFrame:
     """Build a PoseFrame.
 
@@ -122,12 +125,26 @@ def make_frame(
             standing further from / closer to the camera).
         hidden: Landmarks to mark as not visible.
         jitter_px: Std-dev of Gaussian noise added to every point, in pixels.
+        legs_visible: Mark knees/ankles/feet visible (camera sees the legs).
+            Their coordinates may lie below the image; only visibility matters.
+        knee_lift: (left, right) knee raise in shoulder widths; the lower leg
+            moves up with it.
+        wrist_lift: (left, right) raise of a hanging hand in shoulder widths.
     """
     px, vis = _neutral_pixels()
     if left:
         _POSES[left](px, "LEFT")
     if right:
         _POSES[right](px, "RIGHT")
+    for side, lift in (("LEFT", knee_lift[0]), ("RIGHT", knee_lift[1])):
+        for joint in ("KNEE", "ANKLE", "HEEL", "FOOT_INDEX"):
+            idx = Pose[f"{side}_{joint}"]
+            px[idx, 1] -= lift * SW
+            if legs_visible:
+                vis[idx] = 0.99
+    for side, lift in (("LEFT", wrist_lift[0]), ("RIGHT", wrist_lift[1])):
+        for joint in ("WRIST", "INDEX", "PINKY", "THUMB"):
+            px[Pose[f"{side}_{joint}"], 1] -= lift * SW
     centre = np.array([IMAGE_SIZE[0] / 2, IMAGE_SIZE[1] / 2], dtype=np.float32)
     px = (px - centre) * scale + centre
     if jitter_px:
@@ -140,3 +157,48 @@ def make_frame(
     lms[:, 1] = px[:, 1] / IMAGE_SIZE[1]
     lms[:, 3] = vis
     return PoseFrame(timestamp_ms=timestamp_ms, landmarks=lms, image_size=IMAGE_SIZE)
+
+
+FRAME_MS = 33  # ~30 fps
+
+
+def motion_stream(
+    segments: list[tuple[str | None, int]],
+    freq_hz: float = 2.0,
+    lift: float = 0.4,
+    part: str = "knee",
+    jitter_px: float = 0.0,
+    seed: int = 0,
+    frame_ms: int = FRAME_MS,
+    t0: int = 0,
+    **frame_kwargs,
+):
+    """Yield ``(frame, t)`` for a sequence of ``(activity, duration_ms)`` segments.
+
+    Activities: ``"stand"`` (still), ``"run"`` (left and right ``part`` rise
+    in turn, ``freq_hz`` strides per second per leg, peak ``lift`` shoulder
+    widths), ``"lift_left"`` (left part raised and held), or None (no person).
+    ``part`` is ``"knee"`` (running in place, legs visible) or ``"wrist"``
+    (pumping arms).
+    """
+    rng = np.random.default_rng(seed)
+    t = t0
+    run_phase_t = 0
+    for activity, duration in segments:
+        end = t + duration
+        while t < end:
+            if activity is None:
+                yield None, t
+                t += frame_ms
+                continue
+            lifts = (0.0, 0.0)
+            if activity == "run":
+                wave = np.sin(2 * np.pi * freq_hz * run_phase_t / 1000)
+                lifts = (lift * max(0.0, wave), lift * max(0.0, -wave))
+                run_phase_t += frame_ms
+            elif activity == "lift_left":
+                lifts = (lift, 0.0)
+            key = "knee_lift" if part == "knee" else "wrist_lift"
+            kwargs = {"legs_visible": part == "knee", key: lifts, **frame_kwargs}
+            yield make_frame(t, jitter_px=jitter_px, rng=rng, **kwargs), t
+            t += frame_ms
