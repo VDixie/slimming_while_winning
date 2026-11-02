@@ -2,12 +2,17 @@
 
 Recordings stay private (``recordings/`` is git-ignored), so these tests are
 skipped on a fresh checkout. Make them with ``sww record --label running`` /
-``--label idle``. Files are matched by the label stored in the recording.
+``--label idle``.
 
-- ``running``: running in place with natural arm swing the whole time
-  (both ``--forward run`` and ``--forward arms`` must hold W through it, with
-  exactly one key-down)
-- ``idle``: standing or normal play movements without running (no W at all)
+What each recording must do is decided by, in order:
+
+1. its labels file ``<name>.labels.json`` (see :mod:`sww.labels`), e.g.
+   ``{"running": [[4.0, 13.4]]}``: W held once per labelled run (started
+   within ~1 s, released within ~1 s of stopping), never outside;
+2. otherwise the label stored in the recording: ``running`` = running in place
+   the whole time (one key-down, held to the end); ``idle`` = never running.
+
+Both ``--forward run`` and ``--forward arms`` are checked.
 """
 
 from pathlib import Path
@@ -17,50 +22,53 @@ import pytest
 from sww.actions import ActionMapper, Mapping, Mode
 from sww.engine import Engine
 from sww.gestures import RunningInPlace, pumping_arms
+from sww.labels import ACTIVITY_FOR_GESTURE, Interval, active_segments, compare, load_labels
 from sww.output import RecordingBackend
 from sww.recording import Recording
 from sww.state import DebounceConfig
 
 RECORDINGS = Path(__file__).resolve().parent.parent / "recordings"
-
-
-def _by_label(label: str) -> list[Path]:
-    paths = []
-    for path in sorted(RECORDINGS.glob("*.npz")):
-        try:
-            if Recording.load(path).meta.get("label") == label:
-                paths.append(path)
-        except (ValueError, OSError, KeyError):
-            continue
-    return paths
-
-
 DETECTORS = {"run": RunningInPlace, "arms": pumping_arms}
 
 
-def _replay(path: Path, mode: str) -> list[tuple[str, str]]:
-    backend = RecordingBackend()
+def _expected(path: Path, rec: Recording, activity: str) -> list[Interval] | None:
+    labels = load_labels(path)
+    if labels is not None:
+        return labels.get(activity, [])
+    label = rec.meta.get("label")
+    if label == activity:
+        return [Interval(0.0, None)]
+    if label == "idle":
+        return []
+    return None  # unknown label, no labels file: nothing to check
+
+
+def _cases() -> list:
+    cases = []
+    for path in sorted(RECORDINGS.glob("*.npz")):
+        try:
+            rec = Recording.load(path)
+        except (ValueError, OSError, KeyError):
+            continue
+        if _expected(path, rec, "running") is not None:
+            cases += [pytest.param(path, mode, id=f"{path.stem}-{mode}") for mode in DETECTORS]
+    return cases or [pytest.param(None, None, marks=pytest.mark.skip("no recordings"))]
+
+
+@pytest.mark.parametrize(("path", "mode"), _cases())
+def test_recording_matches_labels(path, mode):
+    rec = Recording.load(path)
     det = DETECTORS[mode]()
+    expected = _expected(path, rec, ACTIVITY_FOR_GESTURE[det.name])
+    backend = RecordingBackend()
     mapper = ActionMapper([Mapping(det.name, "w", Mode.HOLD)], backend)
     engine = Engine([det], mapper, {det.name: DebounceConfig(min_on_ms=50, min_off_ms=200)})
-    engine.run(Recording.load(path).frames())
-    return backend.calls
+    results = engine.run(rec.frames())
 
-
-def _params(label):
-    paths = _by_label(label)
-    return paths or [pytest.param(None, marks=pytest.mark.skip(f"no '{label}' recordings"))]
-
-
-@pytest.mark.parametrize("mode", list(DETECTORS))
-@pytest.mark.parametrize("path", _params("running"), ids=lambda p: getattr(p, "stem", "none"))
-def test_running_recording_holds_w_once(path, mode):
-    calls = _replay(path, mode)
-    assert calls[:1] == [("down", "w")]
-    assert calls.count(("down", "w")) == 1
-
-
-@pytest.mark.parametrize("mode", list(DETECTORS))
-@pytest.mark.parametrize("path", _params("idle"), ids=lambda p: getattr(p, "stem", "none"))
-def test_idle_recording_never_presses_w(path, mode):
-    assert _replay(path, mode) == []
+    t0 = int(rec.timestamps_ms[0])
+    times = [(r.timestamp_ms - t0) / 1000 for r in results]
+    segments = active_segments(times, [r.active.get(det.name, False) for r in results])
+    comparison = compare(expected, segments)
+    assert comparison.ok, comparison.problems()
+    # One key-down per activation: no presses beyond what the labels allow.
+    assert backend.calls.count(("down", "w")) == len(expected)

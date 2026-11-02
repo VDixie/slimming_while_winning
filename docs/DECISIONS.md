@@ -8,6 +8,38 @@ Format: **Decision** — Why — Alternatives considered
 
 ---
 
+## 2026-11-02 — Labelled recordings; body bounce only has to go up
+
+- **Labels files** (`<recording>.labels.json`, `{"running": [[start, end], ...]}`,
+  seconds from the first frame, `null` = until the end). Two new recordings mix
+  standing and running, which the old "running the whole time" rule couldn't check.
+  The real-recording tests now require one activation per labelled interval
+  (start ≤ 1.2 s, stop ≤ 1.0 s late, ≤ 0.4 s early for label imprecision) and none
+  outside. Kept as a sidecar file, not inside the `.npz`, so it can be edited by
+  hand without touching the raw data. The per-frame `label.<activity>` CSV column
+  is the training target for step 4.
+- **Bounce scores only the upward side** (`OscillationParams.sides="up"`). Found on
+  `running_20261102-175705`: W released 0.5 s into a run and pressed again. Cause:
+  the shoulders' *lowest* point while running is about their standing height; each
+  step pushes up from there. With the 3 s baseline still mostly standing, the
+  "below baseline" side was tiny, so the both-sides rule failed until the baseline
+  caught up. A small knee dip before the first jump had briefly satisfied it, hence
+  the flicker. Compared on labelled data and a synthetic worst case (upward-only
+  bounce, with and without a dip, 90 runs):
+
+  | Bounce rule | Real recordings | Synthetic flickers | Running swing min | Not-running swing max |
+  |---|---|---|---|---|
+  | both sides, 3 s baseline (old) | 1 flicker | 60/90 | 0.020 | 0.014 |
+  | both sides, 2 s baseline | OK | 32/90 | 0.024 | 0.011 |
+  | **up only, 3 s baseline** | OK | 0/90 | 0.076 | 0.022 |
+
+  Thresholds: swing 0.02–0.045 (half your bounce still scores ~1). Crouching and
+  staying scores 0, as before. The arms keep "both sides".
+- Measured on real data (labelled): start delay 0.8–1.0 s, stop delay 0.17–0.23 s.
+  The start is slower than the synthetic 0.5 s in both `run` and `arms` modes, so
+  it is limited by the arm signal (wrists hidden at rest, so coverage must build up),
+  not the bounce. Not changed yet.
+
 ## 2026-11-02 — `sww record` writes the replay CSV automatically
 
 - **After saving, `record` replays the recording and writes `<name>.csv` next to the

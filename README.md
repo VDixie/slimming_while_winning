@@ -54,6 +54,22 @@ uv run pytest                             # webcam-free tests
    After changing detectors, refresh a CSV with `uv run sww replay <file>.npz --csv`.
    Send me the output (or the files) and I'll tune the thresholds on your real data.
 
+   **Label when you really ran** (needed when a recording mixes standing and
+   running). Next to `running_<time>.npz`, create `running_<time>.labels.json`:
+   ```json
+   {"running": [[4.0, 13.4]]}
+   ```
+   Times are seconds from the start of the recording, the same times `sww replay`
+   prints; `null` as the end means "until the recording ends", `[]` means "never".
+   ~0.2 s precision is enough. Then:
+   - `uv run pytest tests/test_real_recordings.py` checks every recording: one W per
+     labelled run, started within ~1 s, released within ~1 s of stopping, never
+     outside a run. Without a labels file, a `running` recording counts as running
+     the whole time and `idle` as never.
+   - `sww replay` prints the start and stop delay per run and adds a
+     `label.running` column (0/1 per frame) to the CSV: the training target for a
+     learned model later (step 4).
+
 3. **Hold a key on its own, in Notepad** (no camera):
    ```powershell
    uv run sww keytest --key w --hold-s 2 --send     # 3 s countdown: click into Notepad
@@ -130,6 +146,7 @@ src/sww/
   actions.py      gesture → key mapping (tap / hold), pause, safety releases
   engine.py       window → detectors → state → actions, per frame (replayable)
   recording.py    landmark recordings (.npz) for replay, tuning and tests
+  labels.py       hand-written ground truth (<name>.labels.json) and checks
   output/         SendInput backend (scan codes), key names, focus gate,
                   global pause hotkey, console-close handler
   preview.py      OpenCV overlay + debug graphs

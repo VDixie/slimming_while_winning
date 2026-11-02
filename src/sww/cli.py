@@ -407,12 +407,16 @@ def cmd_record(args: argparse.Namespace) -> int:
     return 0
 
 
-def _replay(rec, args: argparse.Namespace, name: str, csv_path: Path | None) -> None:
+def _replay(rec, args: argparse.Namespace, name: str, csv_path: Path | None, labels=None) -> None:
     """Run the gesture engine over a recording (nothing is sent); print actions and a summary.
 
     Writes one CSV row per frame (scores, active flags, every rule value) to
-    ``csv_path`` if given. Shared by ``replay`` and ``record``.
+    ``csv_path`` if given. With ``labels`` (see :mod:`sww.labels`), also checks
+    each gesture against its labelled activity and adds a ``label.<activity>``
+    column (1 = labelled as happening). Shared by ``replay`` and ``record``.
     """
+    from sww.labels import ACTIVITY_FOR_GESTURE, active_segments, compare
+
     backend = RecordingBackend()
     engine, described = build_engine(args, backend)
     t0 = int(rec.timestamps_ms[0])
@@ -430,11 +434,19 @@ def _replay(rec, args: argparse.Namespace, name: str, csv_path: Path | None) -> 
     max_score: dict[str, float] = {}
     starts: dict[str, int] = {}
     active_ms: dict[str, int] = {}
+    times_s: list[float] = []
+    active_flags: dict[str, list[bool]] = {d.name: [] for d in engine.detectors}
     prev_t = t0
     for frame, ts in rec.frames():
         step = engine.step(frame, ts)
         _log_actions(step.actions, send=True, t0_ms=t0)
+        t_s = (ts - t0) / 1000
+        times_s.append(t_s)
+        for gesture, flags in active_flags.items():
+            flags.append(step.active.get(gesture, False))
         row: dict[str, object] = {"t_ms": ts - t0, "person": int(frame is not None)}
+        for activity, intervals in (labels or {}).items():
+            row[f"label.{activity}"] = int(any(i.contains(t_s) for i in intervals))
         for gesture, ev in step.evaluations.items():
             if ev.score is not None:
                 max_score[gesture] = max(max_score.get(gesture, 0.0), ev.score)
@@ -459,6 +471,24 @@ def _replay(rec, args: argparse.Namespace, name: str, csv_path: Path | None) -> 
             f"  {n:18} starts {starts.get(n, 0):3d} | active {active_ms.get(n, 0) / 1000:6.2f} s "
             f"| max score {max_score.get(n, 0.0):.2f}"
         )
+
+    for det in engine.detectors:
+        activity = ACTIVITY_FOR_GESTURE.get(det.name)
+        if not labels or activity not in labels:
+            continue
+        result = compare(labels[activity], active_segments(times_s, active_flags[det.name]))
+        print()
+        print(f"Labels check: {det.name} vs labelled '{activity}':")
+        for r in result.intervals:
+            end = "end" if r.interval.end_s is None else f"{r.interval.end_s:g}"
+            start_d = "-" if r.start_delay_s is None else f"{r.start_delay_s:+.2f} s"
+            stop_d = "-" if r.stop_delay_s is None else f"{r.stop_delay_s:+.2f} s"
+            print(
+                f"  [{r.interval.start_s:g}, {end}]: activated {len(r.segments)}x, "
+                f"start delay {start_d}, stop delay {stop_d}"
+            )
+        problems = result.problems()
+        print("  OK" if not problems else "  PROBLEMS: " + "; ".join(problems))
 
     if csv_path is not None:
         fields: list[str] = []
@@ -486,7 +516,12 @@ def cmd_replay(args: argparse.Namespace) -> int:
         if args.csv is None
         else (path.with_suffix(".csv") if args.csv == "auto" else Path(args.csv))
     )
-    _replay(rec, args, args.file, csv_path)
+    from sww.labels import labels_path, load_labels
+
+    labels = load_labels(path)
+    if labels is not None:
+        print(f"Using labels from {labels_path(path)}")
+    _replay(rec, args, args.file, csv_path, labels)
     return 0
 
 

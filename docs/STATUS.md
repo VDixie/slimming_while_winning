@@ -36,8 +36,11 @@
 - **First real recordings** (running + idle): knees turned out to be out of frame and
   were removed. Arm swing and bounce were tuned on them: one key-down for the whole
   running recording, nothing on idle, in both `run` and `arms` modes
+- **Labelled recordings** (`<name>.labels.json`): two runs with standing before and
+  after. They exposed a start-up flicker, fixed by scoring only the upward side of the
+  bounce. All 4 recordings: one W per run, none outside, in both modes
 - Off-screen landmarks are now ignored (MediaPipe guesses them with high visibility)
-- 135 tests pass (incl. replay of local recordings when present); Ruff clean
+- 167 tests pass (incl. replay of local recordings when present); Ruff clean
 
 ## Performance
 - Ryzen 9 5900X, Logitech Brio 100: camera-bound at 30 fps (720p MJPG); pose lite ~11 ms/frame
@@ -45,11 +48,13 @@
 - Running detector latency (synthetic, at your real 1.33 Hz cadence): **start ~0.5 s**,
   **stop ~0.55–0.6 s** (up to 0.75 s at 2 Hz / 15 fps). Slower than the 100 ms target by
   design (a rhythm needs about one stride)
+- **On real labelled recordings: start 0.8–1.0 s, stop ~0.2 s** after the labelled times
 
 ## What's broken / known issues
 - Idle recording was standing still; natural play movements are untested for false W
-- Only one running recording (one person, one pace, the whole 15 s running); stop
-  latency on real data not measured yet
+- Start delay on real data (0.8–1.0 s) is longer than synthetic; limited by the arm
+  signal (wrists out of sight at rest), not the bounce
+- Running recordings are all one person, one pace, one session
 - Force-killing the process can leave W "down" in Windows (press W once to clear)
 - Body-frame scale uses apparent shoulder width, so turning sideways inflates
   distances (calibration in step 3 fixes this)
@@ -59,7 +64,7 @@
 1. `uv run sww run --debug`: run in place, stop, play normally; watch the arm-swing and
    bounce graphs; try Ctrl+Alt+P
 2. Record a livelier idle (`--label idle`: gesturing, hand on head, reaching for the
-   mouse) and a run with standing at both ends, to check false triggers and stop latency
+   mouse, bobbing) to check false triggers; label mixed recordings with a `.labels.json`
 3. `uv run sww bench` in the same lighting as the recordings (15 vs 30 fps)
 4. `uv run sww keytest --key w --hold-s 2 --send` into Notepad (expect a single `w`)
 5. `uv run sww run --send --window Notepad`, then `--window "World of Warcraft"`
