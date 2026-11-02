@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# Downloaded MediaPipe models (fetch with `uv run sww download-models`)
+models/*.task
+
+# Future: landmark recordings stay local and private
+recordings/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
